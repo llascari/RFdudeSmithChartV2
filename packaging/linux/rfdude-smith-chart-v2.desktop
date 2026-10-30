@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=RFdude Smith Chart V2
+Comment=RF matching network Smith chart and analysis
+Exec=RFdudeSmithChartV2 %f
+Icon=rfdude-smith-chart-v2
+Terminal=false
+Categories=Science;Engineering;
+StartupNotify=true

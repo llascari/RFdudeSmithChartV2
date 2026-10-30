@@ -1,0 +1,36 @@
+RFdude Smith Chart V2
+Copyright (c) 2026 Lance Lascari.
+
+The RFdude Smith Chart V2 source code, project-authored materials, and supplied
+legacy `.lls` example files are licensed under the MIT License; see LICENSE.
+Lance Lascari created the original RFdude Smith Chart application and directed
+this new V2 project. GitHub Copilot was the principal implementation assistant
+for this phase and performed most of the implementation work, including
+substantial code, testing, and documentation contributions, under Lance's
+direction and review. Copilot is an AI tool, not a project maintainer or
+copyright holder. The project is provided as-is, without planned maintenance or
+support, and is not soliciting or accepting pull requests.
+
+The original RFdude Smith Chart application is used as a behavioral reference
+with the author's permission. Its original source code is not part of this
+project; the supplied legacy example files are included in this project's MIT
+license.
+
+Third-party software:
+
+This application uses Qt 6 Core, Gui, and Widgets, dynamically linked. Tests
+also use Qt Test. Qt is copyright The Qt Company Ltd. and other contributors.
+These Qt modules are available under LGPL version 3, GPL licenses, or commercial
+terms, depending on the selected Qt distribution. Qt and other third-party
+software are not covered by this project's MIT license.
+
+The LGPL v3 and GPL v3 license texts are provided in licenses/. The official
+Qt 6.8.3 source is available at:
+https://download.qt.io/archive/qt/6.8/6.8.3/single/
+https://code.qt.io/cgit/qt/qtbase.git/tree/?h=v6.8.3
+
+Development packages are unsigned test builds, not release-ready installers.
+Before external distribution, review the selected Qt licensing terms and all
+bundled dependencies, provide the corresponding source and required notices,
+and ensure recipients can replace/relink LGPL libraries as required. Bundled
+system libraries and Qt's third-party components may require additional notices.

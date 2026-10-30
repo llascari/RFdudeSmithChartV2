@@ -1,0 +1,96 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-22.04
+            qt-arch: linux_gcc_64
+            artifact: linux-x64
+          - name: Windows x64
+            os: windows-2022
+            qt-arch: win64_msvc2022_64
+            artifact: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build and runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libegl1
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: ${{ matrix.qt-arch }}
+          cache: true
+      - name: Configure
+        if: runner.os != 'macOS'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DRFDUDE_BUNDLE_QT=ON
+      - name: Configure macOS architecture
+        if: runner.os == 'macOS'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DRFDUDE_BUNDLE_QT=ON -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake-osx-arch }}
+      - name: Build
+        id: build
+        run: cmake --build build --config Release --parallel 2
+      - name: Install Inno Setup
+        if: ${{ steps.build.outcome == 'success' && runner.os == 'Windows' }}
+        run: choco install innosetup --no-progress -y
+      - name: Test
+        id: test
+        run: ctest --test-dir build -C Release --output-on-failure --verbose
+      - name: Upload Windows UI test logs
+        if: ${{ failure() && runner.os == 'Windows' && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-windows-ui-test-logs
+          path: build/test-output/*.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Package deployable build
+        id: package
+        if: ${{ always() && steps.build.outcome == 'success' && (success() || runner.os == 'Windows') }}
+        run: cpack --config build/CPackConfig.cmake -C Release -B packages
+      - name: Create Windows installer
+        id: installer
+        if: ${{ always() && steps.build.outcome == 'success' && steps.package.outcome == 'success' && runner.os == 'Windows' && (success() || runner.os == 'Windows') }}
+        shell: pwsh
+        run: |
+          $stage = Join-Path $PWD "stage/windows"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          cmake --install build --config Release --prefix $stage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $versionMatch = Select-String -Path CMakeLists.txt -Pattern '^\s*VERSION\s+([0-9.]+)'
+          if (-not $versionMatch) { throw "Could not read the project version from CMakeLists.txt" }
+          $version = $versionMatch.Matches[0].Groups[1].Value
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
+          & $iscc "/DAppStage=$stage" "/DAppVersion=$version" "packaging/windows/RFdudeSmithChartV2.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload package artifact
+        if: ${{ always() && steps.package.outcome == 'success' && (runner.os != 'Windows' || steps.installer.outcome == 'success') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-${{ matrix.artifact }}${{ steps.test.outcome == 'failure' && '-tests-failed' || '' }}
+          path: |
+            packages/*.deb
+            packages/*-setup.exe
+            packages/*.dmg
+          if-no-files-found: error
+          retention-days: 30
