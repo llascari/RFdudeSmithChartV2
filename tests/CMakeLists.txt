@@ -5,10 +5,11 @@ target_link_libraries(rf_tests PRIVATE rfui Qt6::Test)
 target_compile_definitions(rf_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 add_test(NAME rf_calculations_and_documents COMMAND rf_tests)
 
-qt_add_executable(ui_tests UiTests.cpp)
+qt_add_executable(ui_tests UiTests.cpp ../src/application.qrc)
 target_link_libraries(ui_tests PRIVATE rfui Qt6::Test)
 target_compile_definitions(ui_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
 set(ui_interaction_cases
+    applicationIconResource
     aboutCreditsAndReferences
     touchstoneImportAndCombinedPng
     touchstoneErrorsAndUndo

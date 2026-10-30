@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QIcon>
 
 int main(int argc, char* argv[])
 {
@@ -9,6 +10,8 @@ int main(int argc, char* argv[])
     QCoreApplication::setApplicationName("RFdudeSmithChartV2");
     QCoreApplication::setApplicationVersion("0.1.0");
     QCoreApplication::setOrganizationName("RFdude");
+    QGuiApplication::setDesktopFileName("rfdude-smith-chart-v2");
+    QApplication::setWindowIcon(QIcon(":/icons/rfdude-smith-chart-v2.png"));
     QCommandLineParser parser;
     parser.setApplicationDescription("Cross-platform RF Smith chart and network tuning");
     parser.addHelpOption();

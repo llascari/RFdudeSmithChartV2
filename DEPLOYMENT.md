@@ -169,13 +169,22 @@ cmake -S . -B build/package -DCMAKE_BUILD_TYPE=Release \
 cmake --build build/package --parallel 2
 ctest --test-dir build/package --output-on-failure
 cpack --config build/package/CPackConfig.cmake -C Release -B build/packages
+python3 -m unittest discover -s tests -p LinuxPackageTests.py
 python3 tools/check_linux_package.py build/packages/*.deb
 ```
 
 The validation command needs `xvfb-run` and `xauth`. It extracts rather than
 installs the package, rejects files outside the private runtime and approved
-desktop/data locations, checks Qt library resolution, and launches the packaged
+desktop/data locations, rejects maintainer scripts and other unexpected control
+entries, checks Qt library resolution for the executable and every bundled
+shared library/plugin, and launches the packaged
 command under Xvfb. CI runs this check before uploading Linux installers.
+
+After deployment, the build sets relative runtime search paths on the private
+copies of shared libraries/plugins. This also supports distribution Qt builds
+whose libraries lack the relative paths provided by official Qt kits; no host
+Qt files are modified. A package that fails validation must not be copied to
+the installer drop folder or distributed.
 
 Bundled Linux packages must keep all Qt runtime files, including `qt.conf`,
 inside `/usr/lib/rfdudesmithchartv2`. `/usr/bin/RFdudeSmithChartV2` is only a
@@ -200,6 +209,27 @@ entire Linux OS. glibc, display services, graphics drivers, and some system
 libraries remain host requirements. Building on a newer distribution can
 introduce dependencies unavailable on older ones. Test the actual package on
 every advertised distribution/version, not just the build host.
+
+The application embeds a PNG copy of the launcher artwork for running windows,
+including launches directly from the executable. It also sets the desktop-entry
+ID `rfdude-smith-chart-v2`; the installed launcher declares the matching X11
+window class so desktop panels can associate running windows with it.
+After upgrading, close any old running instance and relaunch. If a pinned
+launcher still shows a stale icon, remove and re-pin it from the applications
+menu.
+
+The artwork source is
+[packaging/linux/rfdude-smith-chart-v2.svg](packaging/linux/rfdude-smith-chart-v2.svg).
+When changing it, regenerate the embedded PNG with `rsvg-convert` (librsvg):
+
+```sh
+rsvg-convert --width 256 --height 256 \
+  --output packaging/linux/rfdude-smith-chart-v2.png \
+  packaging/linux/rfdude-smith-chart-v2.svg
+```
+
+The PNG is checked in; building or installing does not require librsvg or a Qt
+SVG plugin.
 
 ### macOS
 

@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/icons">
+    <file alias="rfdude-smith-chart-v2.png">../packaging/linux/rfdude-smith-chart-v2.png</file>
+  </qresource>
+</RCC>

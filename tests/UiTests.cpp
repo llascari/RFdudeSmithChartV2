@@ -20,6 +20,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QImage>
+#include <QIcon>
 #include <QGroupBox>
 #include <QLabel>
 #include <QMessageBox>
@@ -72,6 +73,20 @@ class UiTests final : public QObject
     Q_OBJECT
 
 private slots:
+    void applicationIconResource()
+    {
+        const QIcon icon(":/icons/rfdude-smith-chart-v2.png");
+        QVERIFY(!icon.isNull());
+        for (const int size : {16, 32, 48, 64, 128, 256}) {
+            const auto pixmap = icon.pixmap(size, size);
+            QVERIFY(!pixmap.isNull());
+            QCOMPARE(pixmap.size(), QSize(size, size));
+            const auto image = pixmap.toImage();
+            QVERIFY(image.pixelColor(size / 2, size / 2).alpha() > 0);
+            QVERIFY(image.pixelColor(0, 0).alpha() < 255);
+        }
+    }
+
     void aboutCreditsAndReferences()
     {
         MainWindow window;

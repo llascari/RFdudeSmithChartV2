@@ -1,0 +1,23 @@
+# Distribution Qt libraries may lack the relative RUNPATH used by official Qt kits.
+# Patch only installed copies inside the application's private runtime.
+set(private_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/rfdudesmithchartv2")
+file(GLOB_RECURSE shared_objects
+    "${private_root}/lib/*.so*"
+    "${private_root}/plugins/*.so*"
+)
+foreach(shared_object IN LISTS shared_objects)
+    if(IS_SYMLINK "${shared_object}")
+        continue()
+    endif()
+    file(READ "${shared_object}" magic LIMIT 4 HEX)
+    if(NOT magic STREQUAL "7f454c46")
+        continue()
+    endif()
+    get_filename_component(object_dir "${shared_object}" DIRECTORY)
+    file(RELATIVE_PATH relative_lib "${object_dir}" "${private_root}/lib")
+    execute_process(
+        COMMAND "@QT_DEPLOY_PATCHELF_EXECUTABLE@" --set-rpath
+            "$ORIGIN/${relative_lib}" "${shared_object}"
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+endforeach()

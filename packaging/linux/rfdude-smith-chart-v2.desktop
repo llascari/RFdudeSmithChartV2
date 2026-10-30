@@ -7,3 +7,4 @@ Icon=rfdude-smith-chart-v2
 Terminal=false
 Categories=Science;Engineering;
 StartupNotify=true
+StartupWMClass=RFdudeSmithChartV2

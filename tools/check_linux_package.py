@@ -2,13 +2,50 @@
 """Check and smoke-test a bundled Debian package without installing it."""
 
 import argparse
+import io
 import os
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 
 
+def check_control_files(package: Path) -> None:
+    control = subprocess.run(
+        ["dpkg-deb", "--ctrl-tarfile", str(package)],
+        check=True, capture_output=True,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(control)) as archive:
+        for member in archive:
+            if member.isdir() and member.name in (".", "./"):
+                continue
+            name = member.name.removeprefix("./")
+            if name not in ("control", "md5sums") or not member.isfile():
+                raise RuntimeError(f"Unexpected package control entry: {member.name}")
+
+
+def check_qt_dependencies(
+    binary: Path, private: Path, environment: dict[str, str], *, require_qt: bool = True,
+) -> None:
+    linked = subprocess.run(
+        ["ldd", str(binary)], check=True, text=True, capture_output=True,
+        env=environment,
+    ).stdout
+    if "not found" in linked:
+        raise RuntimeError(f"Missing runtime dependencies in {binary}:\n{linked}")
+    qt_libraries = [line for line in linked.splitlines() if "libQt6" in line]
+    qt_paths = [
+        Path(line.split("=>", 1)[1].split(" (", 1)[0].strip()).resolve()
+        for line in qt_libraries if "=>" in line
+    ]
+    if (require_qt and not qt_paths) or len(qt_paths) != len(qt_libraries) or any(
+        path.parent != private / "lib" for path in qt_paths
+    ):
+        raise RuntimeError(f"Qt libraries are not isolated in {binary}:\n{linked}")
+
+
 def check_package(package: Path) -> None:
+    check_control_files(package)
     with tempfile.TemporaryDirectory(prefix="rfdude-package-") as directory:
         root = Path(directory)
         subprocess.run(["dpkg-deb", "--extract", str(package), str(root)], check=True)
@@ -51,21 +88,15 @@ def check_package(package: Path) -> None:
             "QT_QPA_PLATFORM_PLUGIN_PATH", "QT_QPA_PLATFORMTHEME", "QT_QPA_PLATFORM",
         ):
             environment.pop(name, None)
-        linked = subprocess.run(
-            ["ldd", str(executable)], check=True, text=True, capture_output=True,
-            env=environment,
-        ).stdout
-        if "not found" in linked:
-            raise RuntimeError(f"Missing runtime dependencies:\n{linked}")
-        qt_libraries = [line for line in linked.splitlines() if "libQt6" in line]
-        qt_paths = [
-            Path(line.split("=>", 1)[1].split(" (", 1)[0].strip()).resolve()
-            for line in qt_libraries if "=>" in line
-        ]
-        if not qt_paths or len(qt_paths) != len(qt_libraries) or any(
-            path.parent != private / "lib" for path in qt_paths
-        ):
-            raise RuntimeError(f"Qt libraries are not isolated:\n{linked}")
+        check_qt_dependencies(executable, private, environment)
+        for tree in (private / "lib", private / "plugins"):
+            for binary in tree.rglob("*.so*"):
+                if binary.is_symlink() or not binary.is_file():
+                    continue
+                with binary.open("rb") as stream:
+                    is_elf = stream.read(4) == b"\x7fELF"
+                if is_elf:
+                    check_qt_dependencies(binary, private, environment, require_qt=False)
 
         environment["QT_QPA_PLATFORM"] = "xcb"
         environment["LD_DEBUG"] = "libs"

@@ -65,7 +65,7 @@ add_library(rfui
 )
 target_link_libraries(rfui PUBLIC rfcore Qt6::Widgets)
 
-qt_add_executable(RFdudeSmithChartV2 src/main.cpp)
+qt_add_executable(RFdudeSmithChartV2 src/main.cpp src/application.qrc)
 target_link_libraries(RFdudeSmithChartV2 PRIVATE rfui)
 set_target_properties(RFdudeSmithChartV2 PROPERTIES
     WIN32_EXECUTABLE TRUE
@@ -149,6 +149,11 @@ rfdude_deploy_private_runtime()
         )
     endif()
     install(SCRIPT ${deploy_script})
+    if(UNIX AND NOT APPLE)
+        configure_file(packaging/linux/fix_private_rpaths.cmake.in
+            "${CMAKE_CURRENT_BINARY_DIR}/fix_private_rpaths.cmake" @ONLY)
+        install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/fix_private_rpaths.cmake")
+    endif()
 endif()
 
 set(CPACK_PACKAGE_VENDOR "RFdude")
