@@ -51,11 +51,11 @@ See [CMakeLists.txt](CMakeLists.txt) and the
 | CI Qt version | Pinned to Qt `6.8.3`; not automatically upgraded |
 | Windows job | Windows 2022 runner, x64 MSVC 2022 Qt kit, Inno Setup `.exe` installer |
 | Linux job | Ubuntu 22.04 runner, x64 Qt kit, `.deb` package |
-| macOS jobs | Temporarily disabled to conserve Actions usage; local build/package support remains available |
+| macOS jobs | Apple Silicon (`macos-14`, `arm64`) and Intel (`macos-15-intel`, `x86_64`) Qt 6.8.3 builds, architecture-checked `.dmg` packages |
 | CI triggers | Pushes to `main` or `v*` tags, pull requests, and manual dispatch |
 | CI downloads | Per-platform workflow artifacts retained for 30 days |
 | Windows after test failure | A successful build is still packaged; installer artifact name ends in `-tests-failed` and is not CI-verified |
-| Public releases | Passing main/tag builds publish complete Linux/Windows pre-releases with checksums |
+| Public releases | Passing main/tag builds publish Linux, Windows, Intel macOS, and Apple Silicon macOS pre-releases with checksums |
 | Signing | No configured Windows signing or macOS Developer ID signing/notarization |
 | Updates | No automatic updater; users install a newer download manually |
 
@@ -69,10 +69,10 @@ without that suffix for a build that passed the Windows test job.
 Fork owners can enable and manually run the reusable workflow without a
 Windows development machine; see [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md).
 
-**macOS architecture warning:** runner labels can change. Before restoring
-macOS CI, verify runner availability, set `CMAKE_OSX_ARCHITECTURES` explicitly,
-and inspect the packaged executable architecture. The previous jobs used
-`macos-14` for Apple Silicon and `macos-15-intel` for Intel.
+The macOS workflow sets `CMAKE_OSX_ARCHITECTURES` explicitly and checks the
+compiled executable with `lipo` before packaging. Runner labels can change;
+confirm the current `macos-14` Apple Silicon and `macos-15-intel` Intel labels
+if updating the workflow.
 
 ### Planning: release downloads and Actions cost
 
@@ -83,11 +83,12 @@ an authenticated GitHub CLI:
 python3 tools/download-installers.py RUN_ID
 ```
 
-The run must have successful Linux and Windows jobs. The default destination is
+The run must have successful Linux, Windows, Intel macOS, and Apple Silicon
+macOS jobs. The default destination is
 `~/Downloads/RFdudeSmithChartV2/YYYY-MM-DD-NN/`, using the local download date
 and the next ascending, unused two-digit daily sequence (01 through 99).
 Existing folders are never overwritten. Use `--destination` to override the
-root. Both installers and a `build-info.json` file containing the source
+root. All four installers and a `build-info.json` file containing the source
 commit, CI URL, and SHA-256 checksums are saved together.
 
 Keep distributable packages out of the source tree and Git history. Attach
@@ -103,16 +104,16 @@ the account's included monthly compute amount and may be billed after that is
 used, depending on the plan and billing settings. As of October 2026, published
 standard-runner rates are approximately $0.006/minute for Linux x64,
 $0.010/minute for Windows x64, and $0.062/minute for macOS. For scale, one
-10-minute job on each of the three operating systems is roughly $0.78 before
-any included allowance; GitHub rounds job time up to whole minutes. Artifact
-storage is a separate allowance from runner compute.
+10-minute job on Linux, one on Windows, and one on each macOS architecture is
+roughly $1.40 before any included allowance; GitHub rounds job time up to whole
+minutes. Artifact storage is a separate allowance from runner compute.
 
 These are estimates, not a quote; rates, plan allowances, and billing rules
 can change. Check
 [GitHub Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
 and [runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing)
 for current details before enabling paid overage. The publishing job waits for
-both platform jobs, uploads the complete verified set to a draft, then publishes
+all four platform jobs, uploads the complete verified set to a draft, then publishes
 it as a pre-release. Failed builds cannot publish.
 
 ## 3. Build a distributable manually
@@ -349,15 +350,17 @@ app from the applications menu; remove it from the software manager when done.
 
 ## 5. Automatic downloadable pre-releases
 
-The [build workflow](.github/workflows/build.yml) publishes only after **both**
-Linux and Windows jobs pass, including all tests and Linux Qt isolation checks.
+The [build workflow](.github/workflows/build.yml) publishes only after all four
+Linux, Windows, Intel macOS, and Apple Silicon macOS jobs pass, including all
+tests, Linux Qt isolation checks, and explicit macOS architecture checks.
 Pushes or manual runs on `main` produce an immutable
 `build-<run-id>-<attempt>` pre-release. Version-tag runs publish using the
 `v<version>` tag, which must match [CMakeLists.txt](CMakeLists.txt). Pull requests,
 other branches, failed jobs, and `-tests-failed` artifacts cannot publish.
 
-The publisher requires exactly the expected Linux `.deb` and Windows setup
-`.exe` from the current run. It generates `SHA256SUMS.txt`, `build-info.json`,
+The publisher requires exactly the expected Linux `.deb`, Windows setup
+`.exe`, and Intel and Apple Silicon macOS `.dmg` files from the current run.
+It generates `SHA256SUMS.txt`, `build-info.json`,
 and notes identifying the source commit, workflow run, safety checks, unsigned
 status, and coverage limits. It uploads assets to a draft before publishing;
 an upload failure leaves the release hidden as a draft. Only this final job
@@ -370,9 +373,9 @@ version/tag. Rerunning `main` creates a new attempt-specific release.
 No stable/latest designation is applied automatically. Use the repository's
 Releases page, not expiring Actions artifact links, for downloads.
 
-The installers remain unsigned, unsupported pre-releases; macOS is not included.
-Passing CI does not replace clean-machine install/uninstall checks, licensing
-review, or future signing/notarization. Source archives attached by GitHub are
+The installers remain unsigned, unsupported pre-releases; macOS DMGs are not
+notarized. Passing CI does not replace clean-machine install/uninstall checks,
+licensing review, or future signing/notarization. Source archives attached by GitHub are
 not ready-to-run applications. Public repository releases are public downloads;
 private repository releases remain access-controlled.
 

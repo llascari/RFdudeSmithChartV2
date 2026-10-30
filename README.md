@@ -75,16 +75,16 @@ build command and `-C Release` to CTest. Tests use Qt's offscreen platform; they
 do not launch or manipulate the legacy program or touch its repository.
 
 The [GitHub workflow](.github/workflows/build.yml) builds, tests, and packages
-Linux x64 and Windows x64 builds using Qt 6.8.3. macOS CI builds, tests, and
-packaging are temporarily disabled to conserve Actions usage; local macOS
-build support remains available.
+Linux x64, Windows x64, macOS Intel, and macOS Apple Silicon builds using Qt
+6.8.3. Each macOS build sets and checks its target architecture explicitly.
 Download packages from an Actions run's **Artifacts** section; artifacts are
 retained for 30 days. Passing builds on `main` and version tags also publish
-Linux and Windows installers together as GitHub Release pre-release assets,
-with checksums and source/build metadata. Pull requests and failed builds never
-publish releases.
+Linux, Windows, and both macOS installers together as GitHub Release
+pre-release assets, with checksums and source/build metadata. Pull requests
+and failed builds never publish releases.
 The Windows download is a setup `.exe`; the Linux download is a `.deb` package
-that installs into the desktop app menu.
+that installs into the desktop app menu; macOS downloads are architecture-
+specific `.dmg` disk images.
 The Windows package may still be uploaded if its build succeeds but UI tests
 fail; its `-tests-failed` artifact suffix means it has not passed CI tests.
 The workflow is enabled in repository settings.
@@ -104,9 +104,10 @@ Kubuntu 26.04 LTS computers and subsequently uninstalled. See the
 for recovery instructions and validation limits. Discard old installer copies;
 the Windows installer is unchanged.
 
-Versioned Linux and Windows installers are published on the
+Versioned Linux, Windows, and macOS installers are published on the
 [GitHub Releases page](https://github.com/llascari/RFdudeSmithChartV2/releases).
-They are unsigned and unsupported; review the release notes before installing.
+They are unsigned and unsupported, and the macOS DMGs are not notarized;
+review the release notes before installing.
 
 ## VS Code: local desktop building and debugging
 

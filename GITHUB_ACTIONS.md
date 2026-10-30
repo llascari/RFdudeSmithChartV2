@@ -1,9 +1,10 @@
 # Build installers with GitHub Actions
 
-This repository includes a reusable GitHub Actions workflow for building and
-testing the application on Linux and Windows. The Windows job runs on a
-GitHub-hosted Windows machine and creates the setup installer; you do not need
-a local Windows computer, Visual Studio, Qt SDK, or GitHub Copilot.
+This repository includes a reusable GitHub Actions workflow for building,
+testing, and packaging the application on Linux, Windows, and macOS. The
+Windows job creates the setup installer, and separate macOS jobs create Intel
+and Apple Silicon disk images; you do not need those computers, a local Qt SDK,
+or GitHub Copilot.
 
 ## Run the workflow from your own fork
 
@@ -18,15 +19,16 @@ a local Windows computer, Visual Studio, Qt SDK, or GitHub Copilot.
    workflow from that branch.
 4. Open the **Actions** tab, choose **Build and test**, select **Run
    workflow**, choose the branch to build, and confirm.
-5. When the run finishes, open it and download the Linux and Windows
-   artifacts. The Windows artifact contains the setup `.exe`; the Linux
-   artifact contains the `.deb`. A Windows artifact ending in
-   `-tests-failed` was packaged despite a test failure and should not be
-   presented as a verified build.
+5. When the run finishes, open it and download the Linux, Windows, and
+   architecture-specific macOS artifacts. The Windows artifact contains the
+   setup `.exe`; Linux contains a `.deb`; macOS artifacts contain `.dmg` files.
+   A Windows artifact ending in `-tests-failed` was packaged despite a test
+   failure and should not be presented as a verified build.
 
 Linux packages are extracted and checked for private Qt runtime paths, then
-smoke-tested under Xvfb before upload. This does not replace clean-machine
-Kubuntu/KDE and Ubuntu desktop testing. The original v0.1.0 Linux release
+smoke-tested under Xvfb before upload. macOS builds explicitly set and verify
+their CPU architecture. These checks do not replace clean-machine desktop
+testing. The original v0.1.0 Linux release
 installer is unsafe and has been replaced on the release page with Debian
 revision `0.1.0-1`: see the warning in [README.md](README.md).
 
@@ -50,16 +52,17 @@ to that branch. Manual runs remain available from the workflow's branch
 selector.
 
 Artifacts are temporary workflow-run downloads retained for 30 days.
-After **both** platform jobs pass, builds of `main` (push or manual dispatch)
+After all four platform jobs pass, builds of `main` (push or manual dispatch)
 automatically publish an immutable pre-release tagged
 `build-<run-id>-<attempt>`. Version-tag builds publish under the `v<version>` tag,
 which must match the CMake project version. Pull requests, other branches, and
 any failed platform job cannot publish. Diagnostic `-tests-failed` artifacts
 are never release inputs.
 
-The publishing job downloads only this run's two verified installer artifacts,
-requires the complete expected set, and attaches installers, `SHA256SUMS.txt`,
-and `build-info.json` with the exact source SHA and run URL. Assets are uploaded
+The publishing job downloads only this run's four verified installer artifacts
+(Linux x64, Windows x64, macOS Intel, and macOS Apple Silicon), requires the
+complete expected set, and attaches installers, `SHA256SUMS.txt`, and
+`build-info.json` with the exact source SHA and run URL. Assets are uploaded
 to a draft first, then made public as a pre-release only after all uploads
 succeed. Upload failure leaves a draft, not a partial public release. Existing
 releases/assets are never overwritten, including the original release's KDE
@@ -71,8 +74,9 @@ repository's **Releases** page.
 Only the publishing job has `contents: write`, using the built-in
 `GITHUB_TOKEN`. No personal token or signing secrets are needed. The same
 behavior applies within forks once Actions and release-writing permissions
-are allowed. These installers remain unsigned and unsupported, and passing
-CI is not exhaustive clean-machine installation/uninstallation certification.
+are allowed. These installers remain unsigned and unsupported; the macOS DMGs
+are not notarized. Passing CI is not exhaustive clean-machine
+installation/uninstallation certification.
 
 ## Prompt for Copilot to adapt a fork
 
@@ -80,8 +84,9 @@ If your fork needs a change to the build recipe, ask Copilot in that repository:
 
 > Review `GITHUB_ACTIONS.md`, `.github/workflows/build.yml`, and the CMake/
 > packaging files. Make the smallest necessary changes so this repository can
-> build and test the project on GitHub-hosted Linux and Windows runners, and
-> upload usable installer artifacts. Preserve the existing application and
+> build and test the project on GitHub-hosted Linux, Windows, and macOS runners,
+> and upload usable installer artifacts for all supported architectures.
+> Preserve the existing application and
 > packaging behavior. Do not add secrets, paid services, signing,
 > or Copilot-specific dependencies. Preserve the existing
 > gated pre-release publishing behavior. Do not push commits, create tags

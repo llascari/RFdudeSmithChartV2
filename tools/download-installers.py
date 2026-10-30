@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download successful Linux/Windows CI installers into a dated build folder."""
+"""Download successful CI installers for all supported platforms into a dated build folder."""
 
 import argparse
 import datetime
@@ -23,7 +23,8 @@ def main():
          "--json", "conclusion,headSha,url,workflowName,jobs"], text=True))
     if run["conclusion"] != "success" or run["workflowName"] != "Build and test":
         parser.error("Choose a successful Build and test workflow run.")
-    for platform in ("Linux x64", "Windows x64"):
+    platforms = ("Linux x64", "Windows x64", "macOS Apple Silicon", "macOS Intel")
+    for platform in platforms:
         if not any(job["name"] == platform and job["conclusion"] == "success"
                    for job in run["jobs"]):
             parser.error(f"Run is missing a successful {platform} job.")
@@ -33,13 +34,18 @@ def main():
         subprocess.run(
             ["gh", "run", "download", str(args.run_id), "--repo", repo,
              "--name", "RFdudeSmithChartV2-linux-x64",
-             "--name", "RFdudeSmithChartV2-windows-x64", "--dir", temporary], check=True)
+             "--name", "RFdudeSmithChartV2-windows-x64",
+             "--name", "RFdudeSmithChartV2-macos-arm64",
+             "--name", "RFdudeSmithChartV2-macos-x64", "--dir", temporary], check=True)
         installers = sorted(path for path in Path(temporary).rglob("*")
                             if path.is_file() and (path.suffix == ".deb"
+                                                  or path.suffix == ".dmg"
                                                   or path.name.endswith("-setup.exe")))
-        if (len(installers) != 2
-                or sum(path.suffix == ".deb" for path in installers) != 1):
-            parser.error("Expected exactly one Linux .deb and one Windows setup .exe.")
+        if (len(installers) != 4
+                or sum(path.suffix == ".deb" for path in installers) != 1
+                or sum(path.suffix == ".dmg" for path in installers) != 2
+                or sum(path.name.endswith("-setup.exe") for path in installers) != 1):
+            parser.error("Expected one Linux .deb, one Windows setup .exe, and two macOS DMGs.")
         today = datetime.date.today().isoformat()
         sequences = [int(path.name[len(today) + 1:]) for path in destination.iterdir()
                      if path.name.startswith(today + "-")

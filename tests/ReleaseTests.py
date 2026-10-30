@@ -18,10 +18,14 @@ spec.loader.exec_module(publisher)
 class ReleaseTests(unittest.TestCase):
     def installers(self, root):
         windows = root / "RFdudeSmithChartV2-0.1.0-windows-x64-setup.exe"
+        mac_arm64 = root / "RFdudeSmithChartV2-0.1.0-macos-arm64.dmg"
+        mac_x64 = root / "RFdudeSmithChartV2-0.1.0-macos-x64.dmg"
         linux = root / "rfdudesmithchartv2_0.1.0-1_amd64.deb"
         windows.write_bytes(b"windows test fixture")
+        mac_arm64.write_bytes(b"macOS Apple Silicon test fixture")
+        mac_x64.write_bytes(b"macOS Intel test fixture")
         linux.write_bytes(b"linux test fixture")
-        return windows, linux
+        return windows, mac_arm64, mac_x64, linux
 
     def publish(self, root, tag="build-123-1"):
         publisher.publish(
@@ -69,13 +73,13 @@ class ReleaseTests(unittest.TestCase):
                 publisher.subprocess, "run",
             ) as run:
                 root = Path(directory)
-                windows, linux = self.installers(root)
+                windows, mac_arm64, mac_x64, linux = self.installers(root)
                 if variant == "missing":
-                    linux.unlink()
+                    mac_arm64.unlink()
                 elif variant == "extra":
                     (root / "unexpected.exe").write_bytes(b"unexpected")
                 elif variant == "empty":
-                    linux.write_bytes(b"")
+                    mac_x64.write_bytes(b"")
                 else:
                     windows.rename(root / "windows-tests-failed.exe")
                 with self.assertRaisesRegex(RuntimeError, "exactly these nonempty installers"):

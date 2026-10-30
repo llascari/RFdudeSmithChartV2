@@ -13,6 +13,8 @@ import subprocess
 def publish(assets: Path, version: str, commit: str, tag: str, run_url: str, repository: str) -> None:
     expected = {
         f"RFdudeSmithChartV2-{version}-windows-x64-setup.exe",
+        f"RFdudeSmithChartV2-{version}-macos-arm64.dmg",
+        f"RFdudeSmithChartV2-{version}-macos-x64.dmg",
         f"rfdudesmithchartv2_{version}-1_amd64.deb",
     }
     files = list(assets.iterdir())
@@ -35,18 +37,19 @@ def publish(assets: Path, version: str, commit: str, tag: str, run_url: str, rep
         "tag": tag,
         "workflow_run": run_url,
         "sha256": checksums,
-        "validation": "Both platform jobs passed, including tests and Linux private Qt checks.",
-        "limitations": "Unsigned, unsupported pre-release; not exhaustive clean-machine certification.",
+        "validation": "All four platform jobs passed, including tests, Linux private Qt checks, and explicit macOS architecture checks.",
+        "limitations": "Unsigned, unnotarized, unsupported pre-release; not exhaustive clean-machine certification.",
     }, indent=2) + "\n")
     notes = assets / "release-notes.txt"
     notes.write_text(
         f"Automated RFdude Smith Chart V2 {version} pre-release.\n\n"
         f"Source commit: `{commit}`\n\n"
-        f"[Passing build and test run]({run_url}). Both Linux x64 and Windows x64 "
-        "jobs passed. Linux packaging checks private Qt paths, dependency resolution, "
-        "and extracted launcher startup under Xvfb before publication.\n\n"
-        "Installers are unsigned and unsupported. CI checks do not replace "
-        "clean-machine installation/uninstallation testing. No macOS installer is included.\n\n"
+        f"[Passing build and test run]({run_url}). Linux x64, Windows x64, "
+        "macOS Intel, and macOS Apple Silicon jobs passed. Linux packaging checks "
+        "private Qt paths, dependency resolution, and extracted launcher startup "
+        "under Xvfb; macOS builds verify the executable architecture before publication.\n\n"
+        "Installers are unsigned and unsupported; macOS DMGs are not notarized. "
+        "CI checks do not replace clean-machine installation/uninstallation testing.\n\n"
         "Linux Qt stays private under `/usr/lib/rfdudesmithchartv2`; only a launcher "
         "is installed in `/usr/bin`. Do not reuse the original unsafe v0.1.0 Linux "
         f"installer. See the [KDE recovery guidance](https://github.com/{repository}"
