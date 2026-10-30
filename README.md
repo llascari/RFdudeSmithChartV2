@@ -88,6 +88,12 @@ The workflow is enabled in repository settings.
 To run the same installer builds in your own fork, see
 [Build installers with GitHub Actions](GITHUB_ACTIONS.md).
 
+## Downloads
+
+Versioned Linux and Windows installers are published on the
+[GitHub Releases page](https://github.com/llascari/RFdudeSmithChartV2/releases).
+They are unsigned and unsupported; review the release notes before installing.
+
 ## VS Code: local desktop building and debugging
 
 This is a desktop Qt/C++ CMake project, not an STM32 or embedded firmware
