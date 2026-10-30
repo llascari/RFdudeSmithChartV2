@@ -27,7 +27,8 @@ a local Windows computer, Visual Studio, Qt SDK, or GitHub Copilot.
 Linux packages are extracted and checked for private Qt runtime paths, then
 smoke-tested under Xvfb before upload. This does not replace clean-machine
 Kubuntu/KDE and Ubuntu desktop testing. The original v0.1.0 Linux release
-installer is unsafe: see the warning in [README.md](README.md).
+installer is unsafe and has been replaced on the release page with Debian
+revision `0.1.0-1`: see the warning in [README.md](README.md).
 
 No secrets, Copilot subscription, or paid signing credentials are required by
 the current workflow. A run started in your fork belongs to your fork, not this

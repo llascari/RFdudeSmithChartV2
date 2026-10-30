@@ -92,9 +92,14 @@ To run the same installer builds in your own fork, see
 
 **Do not install the original v0.1.0 Linux `.deb`.** It installs a shared
 `/usr/bin/qt.conf` and Qt runtime files that can break KDE/Dolphin. On affected
-machines, remove `rfdudesmithchartv2` and refresh the loader cache with
-`sudo ldconfig`. The corrected packaging uses a private runtime; the original
-release asset remains unsafe until replaced with a validated rebuild.
+machines, remove `rfdudesmithchartv2`, run `sudo ldconfig`, and reboot.
+The unsafe release download has been replaced with
+[`rfdudesmithchartv2_0.1.0-1_amd64.deb`](https://github.com/llascari/RFdudeSmithChartV2/releases/download/v0.1.0/rfdudesmithchartv2_0.1.0-1_amd64.deb),
+which uses a private Qt runtime. It was tested successfully on the two affected
+Kubuntu 26.04 LTS computers and subsequently uninstalled. See the
+[release notes](https://github.com/llascari/RFdudeSmithChartV2/releases/tag/v0.1.0)
+for recovery instructions and validation limits. Discard old installer copies;
+the Windows installer is unchanged.
 
 Versioned Linux and Windows installers are published on the
 [GitHub Releases page](https://github.com/llascari/RFdudeSmithChartV2/releases).

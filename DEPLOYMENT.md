@@ -183,8 +183,13 @@ launcher; desktop integration and examples remain under `/usr/share`.
 Never install a global `/usr/bin/qt.conf`, Qt libraries in `/usr/lib`, or
 plugins in `/usr/plugins`. The original v0.1.0 Linux release did so and can
 break KDE/Dolphin; do not distribute or install that asset. The corrected
-Debian revision is `0.1.0-1`; replace the published asset and checksums only
-after validation. On affected machines, remove `rfdudesmithchartv2`, run
+Debian revision is `0.1.0-1`. The published Linux asset and checksums were
+replaced after CI validation and successful testing on both affected Kubuntu
+26.04 LTS computers, including subsequent uninstall. The original source tag
+and Windows installer are unchanged; the release notes identify the corrected
+Linux build commit and provide recovery instructions. This does not constitute
+exhaustive clean-machine compatibility testing.
+On affected machines, remove `rfdudesmithchartv2`, run
 `sudo ldconfig`, and restart the desktop/reboot. Do not remove system Qt
 packages or use `autoremove` as part of this recovery.
 
