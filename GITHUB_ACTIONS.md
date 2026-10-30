@@ -49,11 +49,30 @@ should update the `push.branches` entry if it wants automatic builds on pushes
 to that branch. Manual runs remain available from the workflow's branch
 selector.
 
-Artifacts are temporary workflow-run downloads, not published releases. This
-workflow retains installer artifacts for 30 days and does not create or publish
-a GitHub Release. To distribute a versioned release from your own repository,
-review and test the installers, then create a release there and attach the
-artifacts and checksums yourself. You need write access to that repository.
+Artifacts are temporary workflow-run downloads retained for 30 days.
+After **both** platform jobs pass, builds of `main` (push or manual dispatch)
+automatically publish an immutable pre-release tagged
+`build-<run-id>-<attempt>`. Version-tag builds publish under the `v<version>` tag,
+which must match the CMake project version. Pull requests, other branches, and
+any failed platform job cannot publish. Diagnostic `-tests-failed` artifacts
+are never release inputs.
+
+The publishing job downloads only this run's two verified installer artifacts,
+requires the complete expected set, and attaches installers, `SHA256SUMS.txt`,
+and `build-info.json` with the exact source SHA and run URL. Assets are uploaded
+to a draft first, then made public as a pre-release only after all uploads
+succeed. Upload failure leaves a draft, not a partial public release. Existing
+releases/assets are never overwritten, including the original release's KDE
+recovery notes; an existing version release makes publication fail rather than
+replace its assets. A rerun on `main` uses a new attempt-specific tag.
+Automatic pre-releases are not marked as stable/latest; find them on the
+repository's **Releases** page.
+
+Only the publishing job has `contents: write`, using the built-in
+`GITHUB_TOKEN`. No personal token or signing secrets are needed. The same
+behavior applies within forks once Actions and release-writing permissions
+are allowed. These installers remain unsigned and unsupported, and passing
+CI is not exhaustive clean-machine installation/uninstallation certification.
 
 ## Prompt for Copilot to adapt a fork
 
@@ -63,8 +82,9 @@ If your fork needs a change to the build recipe, ask Copilot in that repository:
 > packaging files. Make the smallest necessary changes so this repository can
 > build and test the project on GitHub-hosted Linux and Windows runners, and
 > upload usable installer artifacts. Preserve the existing application and
-> packaging behavior. Do not add secrets, paid services, release publishing,
-> signing, or Copilot-specific dependencies. Do not push commits, create tags
+> packaging behavior. Do not add secrets, paid services, signing,
+> or Copilot-specific dependencies. Preserve the existing
+> gated pre-release publishing behavior. Do not push commits, create tags
 > or releases, or change repository visibility. Explain any required GitHub
 > Settings actions to the repository owner, and run any safe local checks
 > available.

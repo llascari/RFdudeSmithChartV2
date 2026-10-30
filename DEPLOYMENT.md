@@ -2,8 +2,8 @@
 
 This is the maintainer's guide to making RFdude Smith Chart V2 downloadable
 on Windows, macOS, and Linux. It separates existing functionality from proposed
-release work. The original V2 source is licensed under MIT; this guide does not
-enable publishing.
+release work. The original V2 source is licensed under MIT. Passing main-branch
+and version-tag CI builds now publish unsigned pre-releases automatically.
 
 **Recommended starting point:** publish versioned downloads on GitHub Releases:
 a Windows x64 setup installer, separate Intel and Apple Silicon macOS DMGs,
@@ -55,7 +55,7 @@ See [CMakeLists.txt](CMakeLists.txt) and the
 | CI triggers | Pushes to `main` or `v*` tags, pull requests, and manual dispatch |
 | CI downloads | Per-platform workflow artifacts retained for 30 days |
 | Windows after test failure | A successful build is still packaged; installer artifact name ends in `-tests-failed` and is not CI-verified |
-| Public releases | No GitHub Release publishing; version-tag pushes build artifacts only |
+| Public releases | Passing main/tag builds publish complete Linux/Windows pre-releases with checksums |
 | Signing | No configured Windows signing or macOS Developer ID signing/notarization |
 | Updates | No automatic updater; users install a newer download manually |
 
@@ -111,10 +111,9 @@ These are estimates, not a quote; rates, plan allowances, and billing rules
 can change. Check
 [GitHub Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
 and [runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing)
-for current details before enabling paid overage. Building and uploading
-packages does not by itself publish a release: a future release workflow can
-attach all successful platform packages to a draft release for review before
-publication.
+for current details before enabling paid overage. The publishing job waits for
+both platform jobs, uploads the complete verified set to a draft, then publishes
+it as a pre-release. Failed builds cannot publish.
 
 ## 3. Build a distributable manually
 
@@ -348,66 +347,37 @@ app from the applications menu; remove it from the software manager when done.
   distributions. It is not a universal Linux installer; RPM-based systems need
   a separate package and validation.
 
-## 5. Publish the first downloadable version
+## 5. Automatic downloadable pre-releases
 
-Start with a **manual draft GitHub Release**; automate after the packages and
-installation steps have been validated.
+The [build workflow](.github/workflows/build.yml) publishes only after **both**
+Linux and Windows jobs pass, including all tests and Linux Qt isolation checks.
+Pushes or manual runs on `main` produce an immutable
+`build-<run-id>-<attempt>` pre-release. Version-tag runs publish using the
+`v<version>` tag, which must match [CMakeLists.txt](CMakeLists.txt). Pull requests,
+other branches, failed jobs, and `-tests-failed` artifacts cannot publish.
 
-1. Finish the license/distribution review below. Decide whether the repository
-   and downloads will be public or remain limited to authorized testers.
-2. Set the version in [CMakeLists.txt](CMakeLists.txt), commit the release
-   changes, and use an immutable version tag such as `v0.1.0`. Pushes of `v*`
-   tags run the build workflow and upload artifacts from that exact commit.
-   This does not publish a GitHub Release; create one manually and attach the
-   tested packages, or add a separately reviewed release-publishing job later.
-3. Require passing tests and clean-machine checks for every advertised platform.
-   Apply platform signing/notarization before computing final checksums.
-4. Download CI artifacts while retained. Unpack GitHub's outer artifact ZIP;
-   the Windows setup `.exe`, Linux `.deb`, and macOS DMG inside are the actual
-   distributables.
-5. Rename assets to identify version, OS, and CPU, for example:
+The publisher requires exactly the expected Linux `.deb` and Windows setup
+`.exe` from the current run. It generates `SHA256SUMS.txt`, `build-info.json`,
+and notes identifying the source commit, workflow run, safety checks, unsigned
+status, and coverage limits. It uploads assets to a draft before publishing;
+an upload failure leaves the release hidden as a draft. Only this final job
+receives `contents: write` through the built-in token.
 
-   ```text
-   RFdudeSmithChartV2-0.1.0-windows-x64-setup.exe
-   RFdudeSmithChartV2-0.1.0-macos-arm64.dmg
-   RFdudeSmithChartV2-0.1.0-macos-x64.dmg
-   RFdudeSmithChartV2-0.1.0-linux-x64.deb
-   SHA256SUMS.txt
-   ```
+Existing releases are never overwritten. This preserves the original
+`v0.1.0` KDE warning and recovery instructions. A version-tag run whose release
+already exists fails publication rather than replacing assets; use a new
+version/tag. Rerunning `main` creates a new attempt-specific release.
+No stable/latest designation is applied automatically. Use the repository's
+Releases page, not expiring Actions artifact links, for downloads.
 
-   These are recommended release names, not the current default CPack names.
-   Generate SHA-256 checksums from the final assets (`sha256sum` on Linux,
-   `shasum -a 256` on macOS, `Get-FileHash -Algorithm SHA256` on Windows).
-6. On GitHub, open **Releases -> Draft a new release**, select the tag, attach
-   all tested assets and checksums, and mark the first prototype a **pre-release**.
-   Include supported/tested OS versions, CPU choices, installation steps,
-   signing status, prerequisites, known limits, and changes since the last version.
-7. Publish only when the complete set is ready. Link the README to the release
-   page, not to an expiring Actions artifact. GitHub's automatically generated
-   "Source code" archives are not ready-to-run applications.
+The installers remain unsigned, unsupported pre-releases; macOS is not included.
+Passing CI does not replace clean-machine install/uninstall checks, licensing
+review, or future signing/notarization. Source archives attached by GitHub are
+not ready-to-run applications. Public repository releases are public downloads;
+private repository releases remain access-controlled.
 
-Public users can download public Release assets without building the source.
-Private repository releases remain access-controlled. GitHub Pages or a
-separate website can be added later; neither is needed for the initial downloads.
-
-### Subsequent automation
-
-Add a dedicated release workflow, keeping PR builds separate:
-
-- Trigger on version tags and optionally manual dispatch; verify the tag agrees
-  with the CMake version. Pin Qt/toolchains and explicit runner architectures.
-- Build, test, deploy, sign, and package natively for each supported target.
-- Collect all platform assets in a final job that creates/updates a **draft**
-  release, with checksums and release notes. Do not publish a partial release
-  if a platform job fails.
-- Grant `contents: write` only to the release publishing job. Keep signing keys
-  and tokens in protected secrets/environments, never in the repository.
-  Require approval for signing/publishing and do not expose secrets to PR builds.
-- Keep manual approval for publication initially. Retain the exact dependency
-  versions, source, build metadata, and symbols needed to diagnose each release.
-
-No signing credentials, paid service, updater, or automated publishing is
-introduced by this guide.
+See [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md) for fork permissions and operational
+details. Local `cpack` validates installers but does not publish them.
 
 ## 6. Open-source and redistribution checklist
 

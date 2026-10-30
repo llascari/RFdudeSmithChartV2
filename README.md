@@ -79,7 +79,10 @@ Linux x64 and Windows x64 builds using Qt 6.8.3. macOS CI builds, tests, and
 packaging are temporarily disabled to conserve Actions usage; local macOS
 build support remains available.
 Download packages from an Actions run's **Artifacts** section; artifacts are
-retained for 30 days and are not published GitHub Releases.
+retained for 30 days. Passing builds on `main` and version tags also publish
+Linux and Windows installers together as GitHub Release pre-release assets,
+with checksums and source/build metadata. Pull requests and failed builds never
+publish releases.
 The Windows download is a setup `.exe`; the Linux download is a `.deb` package
 that installs into the desktop app menu.
 The Windows package may still be uploaded if its build succeeds but UI tests
