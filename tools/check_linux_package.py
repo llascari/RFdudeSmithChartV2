@@ -5,6 +5,7 @@ import argparse
 import io
 import os
 from pathlib import Path
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -42,6 +43,16 @@ def check_qt_dependencies(
         path.parent != private / "lib" for path in qt_paths
     ):
         raise RuntimeError(f"Qt libraries are not isolated in {binary}:\n{linked}")
+
+
+def check_loaded_qt_libraries(loader_output: str, private: Path) -> None:
+    loaded = [
+        Path(match.group(1)).resolve()
+        for match in re.finditer(r"calling init:\s+(\S+)", loader_output)
+        if Path(match.group(1)).name.startswith("libQt6")
+    ]
+    if not loaded or any(path.parent != private / "lib" for path in loaded):
+        raise RuntimeError(f"Loaded Qt libraries are not isolated:\n{loader_output}")
 
 
 def check_package(package: Path) -> None:
@@ -111,6 +122,7 @@ def check_package(package: Path) -> None:
             )
         platform_plugin = str(private / "plugins/platforms/libqxcb.so")
         loader_output = result.stdout + result.stderr
+        check_loaded_qt_libraries(loader_output, private)
         if not any(
             platform_plugin in line and "calling init:" in line
             for line in loader_output.splitlines()

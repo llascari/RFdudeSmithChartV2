@@ -1,0 +1,48 @@
+if(CPACK_SOURCE_INSTALLED_DIRECTORIES AND NOT CPACK_INSTALL_CMAKE_PROJECTS
+        AND CPACK_INSTALLED_DIRECTORIES STREQUAL CPACK_SOURCE_INSTALLED_DIRECTORIES)
+    message(STATUS "Source archive: Linux installer validation does not apply.")
+    return()
+endif()
+
+function(rfdude_reject_packages reason)
+    # CPack can still copy artifacts after a post-build script reports an error.
+    foreach(package IN LISTS CPACK_PACKAGE_FILES)
+        file(REMOVE "${package}")
+    endforeach()
+    message(FATAL_ERROR "${reason}")
+endfunction()
+
+if(NOT "@RFDUDE_BUNDLE_QT@")
+    rfdude_reject_packages("Linux installers require RFDUDE_BUNDLE_QT=ON and private Qt validation.")
+endif()
+if(NOT CPACK_PACKAGE_FILES)
+    rfdude_reject_packages("No generated Linux packages to validate.")
+endif()
+
+find_package(Python3 3.9 QUIET COMPONENTS Interpreter)
+if(NOT Python3_FOUND)
+    rfdude_reject_packages("Linux installer validation requires Python 3.9 or newer.")
+endif()
+find_program(RFDUDE_DPKG_DEB dpkg-deb)
+find_program(RFDUDE_LDD ldd)
+find_program(RFDUDE_XVFB_RUN xvfb-run)
+find_program(RFDUDE_XAUTH xauth)
+foreach(tool RFDUDE_DPKG_DEB RFDUDE_LDD RFDUDE_XVFB_RUN RFDUDE_XAUTH)
+    if(NOT ${tool})
+        rfdude_reject_packages("Missing Linux installer validation tool: ${tool}")
+    endif()
+endforeach()
+
+foreach(package IN LISTS CPACK_PACKAGE_FILES)
+    if(NOT package MATCHES "\\.deb$")
+        rfdude_reject_packages("Linux package validation supports Debian installers only: ${package}")
+    endif()
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}"
+            "@CMAKE_CURRENT_SOURCE_DIR@/tools/check_linux_package.py" "${package}"
+        RESULT_VARIABLE validation_result
+    )
+    if(NOT validation_result STREQUAL "0")
+        rfdude_reject_packages("Linux installer validation failed (${validation_result}): ${package}")
+    endif()
+endforeach()

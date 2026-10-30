@@ -156,7 +156,8 @@ Qt deployment does not by itself prove every dependency is present.
 ### Linux x64
 
 Use Ubuntu 22.04 as the current packaging baseline, with a C++20 compiler,
-CMake, the official Qt 6.8.3 `gcc_64` kit, and `patchelf`. The workflow lists
+CMake, the official Qt 6.8.3 `gcc_64` kit, `patchelf`, Python 3.9 or newer,
+`xvfb-run`, and `xauth`. The workflow lists
 additional build/display-library packages. Ubuntu 22.04's default distro Qt is
 older than the project's Qt minimum; do not assume `apt install qt6-base-dev`
 on that release supplies the required version.
@@ -168,17 +169,32 @@ cmake -S . -B build/package -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.3/gcc_64" -DRFDUDE_BUNDLE_QT=ON
 cmake --build build/package --parallel 2
 ctest --test-dir build/package --output-on-failure
-cpack --config build/package/CPackConfig.cmake -C Release -B build/packages
 python3 -m unittest discover -s tests -p LinuxPackageTests.py
-python3 tools/check_linux_package.py build/packages/*.deb
+cpack --config build/package/CPackConfig.cmake -C Release -B build/packages
 ```
 
-The validation command needs `xvfb-run` and `xauth`. It extracts rather than
+Linux `cpack` runs the safety check automatically on the generated Debian package
+before copying it to the output directory. Missing validation tools, non-bundled
+builds, unsupported package formats, or failed checks make packaging fail; there
+is no validation-skip option. Failed staging files under `_CPack_Packages` are
+not distributable. Existing installers from earlier runs are not removed: use a
+fresh output directory to avoid confusing stale artifacts with current results.
+The `package` build target uses the same gate. Ordinary builds and staging with
+`cmake --install` do not run it and are not validated installers. Source archives
+are not installers and remain outside this check.
+
+The check extracts rather than
 installs the package, rejects files outside the private runtime and approved
 desktop/data locations, rejects maintainer scripts and other unexpected control
 entries, checks Qt library resolution for the executable and every bundled
-shared library/plugin, and launches the packaged
-command under Xvfb. CI runs this check before uploading Linux installers.
+shared library/plugin, and launches the packaged command under Xvfb. Loader
+diagnostics must also show that all actually loaded Qt libraries are private.
+CI additionally rechecks the final output before uploading Linux installers.
+To recheck an existing package without installing it:
+
+```sh
+python3 tools/check_linux_package.py path/to/installer.deb
+```
 
 After deployment, the build sets relative runtime search paths on the private
 copies of shared libraries/plugins. This also supports distribution Qt builds
