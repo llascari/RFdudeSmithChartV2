@@ -27,7 +27,7 @@ jobs:
             qt-arch: win64_msvc2022_64
             artifact: windows-x64
           - name: macOS Apple Silicon
-            os: macos-14
+            os: macos-15
             qt-arch: clang_64
             cmake-osx-architecture: arm64
             artifact: macos-arm64
@@ -81,6 +81,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RFdudeSmithChartV2-windows-ui-test-logs
+          path: build/test-output/*.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload macOS UI test logs
+        if: ${{ failure() && runner.os == 'macOS' && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-${{ matrix.artifact }}-ui-test-logs
           path: build/test-output/*.txt
           if-no-files-found: warn
           retention-days: 7

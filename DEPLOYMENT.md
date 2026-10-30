@@ -51,7 +51,7 @@ See [CMakeLists.txt](CMakeLists.txt) and the
 | CI Qt version | Pinned to Qt `6.8.3`; not automatically upgraded |
 | Windows job | Windows 2022 runner, x64 MSVC 2022 Qt kit, Inno Setup `.exe` installer |
 | Linux job | Ubuntu 22.04 runner, x64 Qt kit, `.deb` package |
-| macOS jobs | Apple Silicon (`macos-14`, `arm64`) and Intel (`macos-15-intel`, `x86_64`) Qt 6.8.3 builds, architecture-checked `.dmg` packages |
+| macOS jobs | Apple Silicon (`macos-15`, `arm64`) and Intel (`macos-15-intel`, `x86_64`) Qt 6.8.3 builds, architecture-checked `.dmg` packages |
 | CI triggers | Pushes to `main` or `v*` tags, pull requests, and manual dispatch |
 | CI downloads | Per-platform workflow artifacts retained for 30 days |
 | Windows after test failure | A successful build is still packaged; installer artifact name ends in `-tests-failed` and is not CI-verified |
@@ -71,7 +71,7 @@ Windows development machine; see [GITHUB_ACTIONS.md](GITHUB_ACTIONS.md).
 
 The macOS workflow sets `CMAKE_OSX_ARCHITECTURES` explicitly and checks the
 compiled executable with `lipo` before packaging. Runner labels can change;
-confirm the current `macos-14` Apple Silicon and `macos-15-intel` Intel labels
+confirm the current `macos-15` Apple Silicon and `macos-15-intel` Intel labels
 if updating the workflow.
 
 ### Planning: release downloads and Actions cost
