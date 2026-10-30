@@ -90,6 +90,12 @@ To run the same installer builds in your own fork, see
 
 ## Downloads
 
+**Do not install the original v0.1.0 Linux `.deb`.** It installs a shared
+`/usr/bin/qt.conf` and Qt runtime files that can break KDE/Dolphin. On affected
+machines, remove `rfdudesmithchartv2` and refresh the loader cache with
+`sudo ldconfig`. The corrected packaging uses a private runtime; the original
+release asset remains unsafe until replaced with a validated rebuild.
+
 Versioned Linux and Windows installers are published on the
 [GitHub Releases page](https://github.com/llascari/RFdudeSmithChartV2/releases).
 They are unsigned and unsupported; review the release notes before installing.
@@ -578,6 +584,14 @@ for portable packages; distro Qt can pull in many system libraries. Linux
 portability is constrained by the build machine's glibc baseline; building on
 Ubuntu 22.04 is intended to support that baseline and newer systems, not every
 Linux distribution.
+
+Bundled Linux installs keep the executable, `qt.conf`, Qt libraries, plugins,
+and translations under `lib/rfdudesmithchartv2` relative to the install prefix.
+Only a shell launcher is installed in `bin`; no shared `bin/qt.conf` or global
+Qt libraries/plugins are installed. Debian revision `0.1.0-1` supersedes the
+unsafe original `0.1.0` package. Validate the finished package without installing
+it using `python3 tools/check_linux_package.py build/packages/*.deb` (requires
+`xvfb-run`, `xauth`, and the package's host library dependencies).
 
 Windows downloads are setup `.exe` installers with Start Menu and desktop
 shortcuts; Linux downloads are `.deb` packages that add the application to the

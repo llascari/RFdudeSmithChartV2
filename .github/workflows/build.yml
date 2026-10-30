@@ -32,7 +32,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build patchelf libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libegl1
+          sudo apt-get install -y ninja-build patchelf xvfb xauth libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0 libegl1
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -83,8 +83,12 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "Inno Setup compiler not found at $iscc" }
           & $iscc "/DAppStage=$stage" "/DAppVersion=$version" "packaging/windows/RFdudeSmithChartV2.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate isolated Linux package
+        id: linux-package-check
+        if: ${{ success() && runner.os == 'Linux' && steps.package.outcome == 'success' }}
+        run: python3 tools/check_linux_package.py packages/*.deb
       - name: Upload package artifact
-        if: ${{ always() && steps.package.outcome == 'success' && (runner.os != 'Windows' || steps.installer.outcome == 'success') }}
+        if: ${{ always() && steps.package.outcome == 'success' && (runner.os != 'Linux' || steps.linux-package-check.outcome == 'success') && (runner.os != 'Windows' || steps.installer.outcome == 'success') }}
         uses: actions/upload-artifact@v4
         with:
           name: RFdudeSmithChartV2-${{ matrix.artifact }}${{ steps.test.outcome == 'failure' && '-tests-failed' || '' }}

@@ -169,7 +169,24 @@ cmake -S . -B build/package -DCMAKE_BUILD_TYPE=Release \
 cmake --build build/package --parallel 2
 ctest --test-dir build/package --output-on-failure
 cpack --config build/package/CPackConfig.cmake -C Release -B build/packages
+python3 tools/check_linux_package.py build/packages/*.deb
 ```
+
+The validation command needs `xvfb-run` and `xauth`. It extracts rather than
+installs the package, rejects files outside the private runtime and approved
+desktop/data locations, checks Qt library resolution, and launches the packaged
+command under Xvfb. CI runs this check before uploading Linux installers.
+
+Bundled Linux packages must keep all Qt runtime files, including `qt.conf`,
+inside `/usr/lib/rfdudesmithchartv2`. `/usr/bin/RFdudeSmithChartV2` is only a
+launcher; desktop integration and examples remain under `/usr/share`.
+Never install a global `/usr/bin/qt.conf`, Qt libraries in `/usr/lib`, or
+plugins in `/usr/plugins`. The original v0.1.0 Linux release did so and can
+break KDE/Dolphin; do not distribute or install that asset. The corrected
+Debian revision is `0.1.0-1`; replace the published asset and checksums only
+after validation. On affected machines, remove `rfdudesmithchartv2`, run
+`sudo ldconfig`, and restart the desktop/reboot. Do not remove system Qt
+packages or use `autoremove` as part of this recovery.
 
 Distribute the resulting `.deb` from `build/packages/`. On Ubuntu, double-click
 the package to open the software installer, authenticate, then launch RFdude
