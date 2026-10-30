@@ -68,9 +68,8 @@ def check_package(package: Path) -> None:
             raise RuntimeError(f"Qt libraries are not isolated:\n{linked}")
 
         environment["QT_QPA_PLATFORM"] = "xcb"
-        environment["QT_DEBUG_PLUGINS"] = "1"
-        environment["QT_LOGGING_RULES"] = "qt.core.plugin.loader.debug=true"
-        environment["QT_MESSAGE_PATTERN"] = "%{message}"
+        environment["LD_DEBUG"] = "libs"
+        environment.pop("LD_DEBUG_OUTPUT", None)
         result = subprocess.run(
             ["xvfb-run", "-a", str(root / "usr/bin/RFdudeSmithChartV2"), "--help"],
             env=environment, capture_output=True, text=True, timeout=60,
@@ -81,7 +80,7 @@ def check_package(package: Path) -> None:
             )
         platform_plugin = str(private / "plugins/platforms/libqxcb.so")
         if not any(
-            platform_plugin in line and "loaded library" in line
+            platform_plugin in line and "calling init:" in line
             for line in result.stderr.splitlines()
         ):
             raise RuntimeError(f"Private Qt platform plugin was not loaded:\n{result.stderr}")
