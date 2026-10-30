@@ -69,6 +69,8 @@ def check_package(package: Path) -> None:
 
         environment["QT_QPA_PLATFORM"] = "xcb"
         environment["QT_DEBUG_PLUGINS"] = "1"
+        environment["QT_LOGGING_RULES"] = "qt.core.plugin.loader.debug=true"
+        environment["QT_MESSAGE_PATTERN"] = "%{message}"
         result = subprocess.run(
             ["xvfb-run", "-a", str(root / "usr/bin/RFdudeSmithChartV2"), "--help"],
             env=environment, capture_output=True, text=True, timeout=60,
