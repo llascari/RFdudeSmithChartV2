@@ -79,11 +79,12 @@ def check_package(package: Path) -> None:
                 f"Launcher failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
             )
         platform_plugin = str(private / "plugins/platforms/libqxcb.so")
+        loader_output = result.stdout + result.stderr
         if not any(
             platform_plugin in line and "calling init:" in line
-            for line in result.stderr.splitlines()
+            for line in loader_output.splitlines()
         ):
-            raise RuntimeError(f"Private Qt platform plugin was not loaded:\n{result.stderr}")
+            raise RuntimeError(f"Private Qt platform plugin was not loaded:\n{loader_output}")
         print(f"PASS: isolated runtime and extracted-package launch: {package.name}")
 
 
