@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 
-from check_linux_package import check_package
+from check_linux_package import check_package, check_package_structure
 
 
 def run(*args: str, **kwargs) -> str:
@@ -97,7 +97,7 @@ def main() -> None:
     if os.geteuid() != 0 or not Path("/.dockerenv").is_file() or not os.environ.get("DISPLAY"):
         parser.error("Run only as root inside a disposable Docker container under Xvfb.")
     package = args.package.resolve()
-    check_package(package)
+    check_package_structure(package)
     kde_canary()
     before = system_runtime_snapshot()
     versions = run("dpkg-query", "-W", "-f=${binary:Package} ${Version}\n").splitlines()
@@ -108,6 +108,7 @@ def main() -> None:
         raise RuntimeError("Installation removed or changed an existing distro package")
     if run("dpkg", "--audit").strip():
         raise RuntimeError("dpkg reports an inconsistent installation")
+    check_package(package)
     example = Path("/usr/share/RFdudeSmithChartV2/examples/network.rfs_45Mfilter.json")
     check_visible_application(example)
     # Reinstall the same revision to exercise replacement of an existing installation.

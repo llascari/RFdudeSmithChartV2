@@ -157,7 +157,7 @@ Qt deployment does not by itself prove every dependency is present.
 
 Use Ubuntu 22.04 as the current packaging baseline, with a C++20 compiler,
 CMake, the official Qt 6.8.3 `gcc_64` kit, `patchelf`, Python 3.9 or newer,
-`xvfb-run`, and `xauth`. The workflow lists
+`dpkg-deb`, `ldd`, `readelf` (binutils), `xvfb-run`, and `xauth`. The workflow lists
 additional build/display-library packages. Ubuntu 22.04's default distro Qt is
 older than the project's Qt minimum; do not assume `apt install qt6-base-dev`
 on that release supplies the required version.

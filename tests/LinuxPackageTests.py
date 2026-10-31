@@ -6,7 +6,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 spec = importlib.util.spec_from_file_location(
@@ -77,6 +77,32 @@ class LinuxPackageTests(unittest.TestCase):
                 else:
                     with self.assertRaises(RuntimeError):
                         package_check.check_rpaths(private / "bin/app", private)
+
+    def test_payload_rejects_duplicates_and_symlink_ancestors_before_extraction(self):
+        for names, message in (
+            (("usr/bin/RFdudeSmithChartV2", "usr/bin/RFdudeSmithChartV2"), "Duplicate"),
+            (
+                ("usr/lib/rfdudesmithchartv2/lib/link",
+                 "usr/lib/rfdudesmithchartv2/lib/link/file"),
+                "traverses a symlink",
+            ),
+        ):
+            with self.subTest(names=names):
+                data = io.BytesIO()
+                with tarfile.open(fileobj=data, mode="w") as archive:
+                    for name in names:
+                        member = tarfile.TarInfo(name)
+                        if name.endswith("/link"):
+                            member.type, member.linkname = tarfile.SYMTYPE, "."
+                        archive.addfile(member)
+                process = MagicMock()
+                process.stdout = io.BytesIO(data.getvalue())
+                process.__enter__.return_value = process
+                process.wait.return_value = 0
+                with patch.object(package_check.subprocess, "Popen", return_value=process):
+                    with self.assertRaisesRegex(RuntimeError, message):
+                        package_check.check_payload(Path("candidate.deb"))
+                self.assertTrue(process.stdout.closed)
 
     def control_archive(self, name, kind=tarfile.REGTYPE):
         data = io.BytesIO()

@@ -99,6 +99,9 @@ pre-release cannot publish until every installer matrix entry passes.
   library-clobbering failure, **not** a booted Kubuntu/Plasma session. Real
   desktop/VM tests still need to cover Wayland/XWayland, graphics drivers,
   themes, and installation while Plasma/Dolphin are already running.
+- Runtime dependencies must be satisfied by the DEB's own `Depends`, not a
+  duplicate CI dependency list. The initial matrix exposed a missing
+  `libopengl0` dependency on Ubuntu 22.04/24.04 and Debian 12; it is now declared.
 - Linux reinstall tests same-revision replacement, not arbitrary historical
   upgrade paths or recovery from an interrupted package-manager operation.
 - Hosted Windows runners already contain Microsoft runtimes. This verifies

@@ -20,29 +20,37 @@ class InstallerTests(unittest.TestCase):
             "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n",
             "cmd LC_RPATH\ncmdsize 48\npath @executable_path/../Frameworks (offset 12)\n",
         )) as run:
-            macos.check_macho(Path("/app/binary"), "arm64")
+            macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
             self.assertEqual(run.call_args_list[1].args[:4], ("otool", "-arch", "arm64", "-L"))
 
     def test_macho_rejects_missing_architecture(self):
         with patch.object(macos, "run", return_value="x86_64\n"):
             with self.assertRaisesRegex(RuntimeError, "Missing arm64"):
-                macos.check_macho(Path("/app/binary"), "arm64")
+                macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
 
     def test_macho_rejects_build_host_dependencies(self):
         with patch.object(macos, "run", side_effect=(
             "arm64\n", "app:\n\t/Users/runner/Qt/lib/QtCore (compatibility version 6.0.0)\n",
         )):
             with self.assertRaisesRegex(RuntimeError, "Non-portable"):
-                macos.check_macho(Path("/app/binary"), "arm64")
+                macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
 
     def test_macho_rejects_absolute_rpaths(self):
-        for entry in ("/Users/runner/Qt/lib", "/usr/local/lib"):
+        for entry in ("/Users/runner/Qt/lib", "/usr/local/lib", "/Users/runner/build path/Qt/lib", "", "@loader_pathexternal/lib"):
             with self.subTest(entry=entry), patch.object(macos, "run", side_effect=(
                 "arm64\n", "app:\n",
                 f"cmd LC_RPATH\ncmdsize 48\npath {entry} (offset 12)\n",
             )):
                 with self.assertRaisesRegex(RuntimeError, "Non-relative"):
-                    macos.check_macho(Path("/app/binary"), "arm64")
+                    macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
+
+    def test_macho_rejects_escaping_relative_rpaths(self):
+        with patch.object(macos, "run", side_effect=(
+            "arm64\n", "app:\n",
+            "cmd LC_RPATH\ncmdsize 48\npath @executable_path/../../../Qt (offset 12)\n",
+        )):
+            with self.assertRaisesRegex(RuntimeError, "escapes the bundle"):
+                macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
 
     def test_native_window_probe_uses_process_and_size(self):
         with patch.object(macos, "run", return_value="true\n") as run:

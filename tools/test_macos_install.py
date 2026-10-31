@@ -27,9 +27,14 @@ def check_macho(binary: Path, architecture: str) -> None:
         if not dependency.startswith(("@rpath/", "@loader_path/", "@executable_path/", "/System/Library/", "/usr/lib/")):
             raise RuntimeError(f"Non-portable Mach-O dependency in {binary}: {dependency}")
     commands = run("otool", "-arch", architecture, "-l", str(binary))
-    for entry in re.findall(r"cmd LC_RPATH\s+cmdsize \d+\s+path (\S+) \(offset", commands):
-        if not entry.startswith(("@loader_path", "@executable_path")):
+    bundle = next(parent for parent in binary.parents if parent.suffix == ".app")
+    for entry in re.findall(r"cmd LC_RPATH\s+cmdsize \d+\s+path (.*?) \(offset", commands):
+        prefix, _, suffix = entry.partition("/")
+        if prefix not in ("@loader_path", "@executable_path"):
             raise RuntimeError(f"Non-relative Mach-O RPATH in {binary}: {entry}")
+        base = binary.parent if prefix == "@loader_path" else bundle / "Contents/MacOS"
+        if not (base / suffix).resolve().is_relative_to(bundle.resolve()):
+            raise RuntimeError(f"Mach-O RPATH escapes the bundle in {binary}: {entry}")
 
 
 def has_visible_window(pid: int) -> bool:
@@ -57,11 +62,13 @@ def main() -> None:
     environment["QT_DEBUG_PLUGINS"] = "1"
     environment["QT_QPA_PLATFORM"] = "cocoa"
     with tempfile.TemporaryDirectory(prefix="RFdude relocated app ") as directory:
-        root = Path(directory)
+        root = Path(directory).resolve()
         mounted = subprocess.run(
             ["hdiutil", "attach", "-readonly", "-nobrowse", "-plist", str(args.dmg.resolve())],
-            check=True, capture_output=True,
+            capture_output=True,
         )
+        if mounted.returncode:
+            raise RuntimeError(f"Could not mount final DMG:\n{mounted.stderr.decode(errors='replace')}")
         entities = plistlib.loads(mounted.stdout)["system-entities"]
         mounts = [Path(entity["mount-point"]) for entity in entities if "mount-point" in entity]
         device = next(entity["dev-entry"] for entity in entities if "dev-entry" in entity)
@@ -74,7 +81,7 @@ def main() -> None:
         finally:
             run("hdiutil", "detach", device)
         for path in app.rglob("*"):
-            if path.is_symlink() and not path.resolve().is_relative_to(app):
+            if path.is_symlink() and not path.resolve().is_relative_to(app.resolve()):
                 raise RuntimeError(f"Bundle symlink escapes app: {path}")
             if path.is_file() and not path.is_symlink():
                 with path.open("rb") as stream:

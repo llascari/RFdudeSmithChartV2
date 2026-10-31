@@ -143,12 +143,16 @@ def check_loaded_qt_libraries(loader_output: str, private: Path) -> None:
         raise RuntimeError(f"Loaded Qt libraries are not isolated:\n{loader_output}")
 
 
-def check_package(package: Path) -> None:
+def check_package_structure(package: Path) -> None:
     check_control_files(package)
     check_metadata(subprocess.run(
         ["dpkg-deb", "--field", str(package)], check=True, text=True, capture_output=True,
     ).stdout)
     check_payload(package)
+
+
+def check_package(package: Path) -> None:
+    check_package_structure(package)
     with tempfile.TemporaryDirectory(prefix="rfdude-package-") as directory:
         root = Path(directory)
         subprocess.run(["dpkg-deb", "--extract", str(package), str(root)], check=True)

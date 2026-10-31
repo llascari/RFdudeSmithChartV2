@@ -179,9 +179,7 @@ jobs:
           docker run --rm --volume "$PWD:/workspace:ro" --env DEBIAN_FRONTEND=noninteractive "$IMAGE" \
             bash -euxo pipefail -c '
               apt-get update
-              apt-get install -y --no-install-recommends python3 binutils kdialog xvfb xauth xdotool dbus-x11 \
-                libgl1 libegl1 libx11-6 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libxcb-cursor0 \
-                libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
+              apt-get install -y --no-install-recommends python3 binutils kdialog xvfb xauth xdotool dbus-x11
               xvfb-run -a dbus-run-session -- python3 /workspace/tools/test_linux_install.py /workspace/installers/*.deb
             ' 2>&1 | tee installer-logs/linux-install.txt
       - name: Upload lifecycle logs
