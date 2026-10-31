@@ -38,8 +38,12 @@ def check_metadata(metadata: str) -> None:
 
 
 def check_payload_member(member: tarfile.TarInfo) -> None:
+    if member.uid != 0 or member.gid != 0 or (
+        not member.issym() and member.mode & 0o6022
+    ):
+        raise RuntimeError(f"Unsafe package ownership or permissions: {member.name}")
     name = member.name.removeprefix("./").rstrip("/")
-    if member.isdir() and name in ("", "."):
+    if member.isdir() and member.name in (".", "./"):
         return
     if name.startswith("/") or posixpath.normpath(name) != name or name.startswith("../"):
         raise RuntimeError(f"Unsafe archive path: {member.name}")
@@ -51,10 +55,6 @@ def check_payload_member(member: tarfile.TarInfo) -> None:
         raise RuntimeError(f"Unexpected system-wide package entry: {name}")
     if not (member.isfile() or member.isdir() or member.issym()):
         raise RuntimeError(f"Unsupported archive entry type: {name}")
-    if member.uid != 0 or member.gid != 0 or (
-        not member.issym() and member.mode & 0o6022
-    ):
-        raise RuntimeError(f"Unsafe package ownership or permissions: {name}")
     if member.issym():
         target = posixpath.normpath(posixpath.join(posixpath.dirname(name), member.linkname))
         if not name.startswith(PRIVATE_RUNTIME + "/") or not target.startswith(PRIVATE_RUNTIME + "/"):

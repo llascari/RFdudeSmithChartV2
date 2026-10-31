@@ -33,6 +33,9 @@ class LinuxPackageTests(unittest.TestCase):
 
     def test_payload_paths_types_and_permissions(self):
         for name, kind, mode, link, passes in (
+            ("./", tarfile.DIRTYPE, 0o755, "", True),
+            ("/", tarfile.DIRTYPE, 0o755, "", False),
+            ("./", tarfile.DIRTYPE, 0o777, "", False),
             ("./usr/", tarfile.DIRTYPE, 0o755, "", True),
             ("./usr/bin/RFdudeSmithChartV2", tarfile.REGTYPE, 0o755, "", True),
             ("./usr/lib/rfdudesmithchartv2/lib/libQt6Core.so.6", tarfile.SYMTYPE, 0o777, "libQt6Core.so.6.8.3", True),
