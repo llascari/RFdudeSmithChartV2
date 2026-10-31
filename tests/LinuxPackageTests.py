@@ -17,6 +17,67 @@ spec.loader.exec_module(package_check)
 
 
 class LinuxPackageTests(unittest.TestCase):
+    def test_metadata_cannot_replace_desktop_packages(self):
+        metadata = "Package: rfdudesmithchartv2\nArchitecture: amd64\n"
+        package_check.check_metadata(metadata)
+        for extra in (
+            "Replaces: libqt6core6\n", "Breaks: plasma-workspace\n",
+            "Conflicts: kdialog\n", "Provides: libqt6gui6\n", "Essential: yes\n",
+            "Pre-Depends: libc6\n",
+        ):
+            with self.subTest(extra=extra), self.assertRaises(RuntimeError):
+                package_check.check_metadata(metadata + extra)
+        for invalid in ("Package: plasma-workspace\nArchitecture: amd64\n", metadata.replace("amd64", "arm64")):
+            with self.assertRaises(RuntimeError):
+                package_check.check_metadata(invalid)
+
+    def test_payload_paths_types_and_permissions(self):
+        for name, kind, mode, link, passes in (
+            ("./usr/", tarfile.DIRTYPE, 0o755, "", True),
+            ("./usr/bin/RFdudeSmithChartV2", tarfile.REGTYPE, 0o755, "", True),
+            ("./usr/lib/rfdudesmithchartv2/lib/libQt6Core.so.6", tarfile.SYMTYPE, 0o777, "libQt6Core.so.6.8.3", True),
+            ("./usr/lib/libQt6Core.so.6", tarfile.REGTYPE, 0o644, "", False),
+            ("./usr/bin/qt.conf", tarfile.REGTYPE, 0o644, "", False),
+            ("./etc/ld.so.conf.d/", tarfile.DIRTYPE, 0o755, "", False),
+            ("./usr/../etc/test", tarfile.REGTYPE, 0o644, "", False),
+            ("/usr/bin/RFdudeSmithChartV2", tarfile.REGTYPE, 0o755, "", False),
+            ("./usr/bin/RFdudeSmithChartV2", tarfile.REGTYPE, 0o4755, "", False),
+            ("./usr/bin/RFdudeSmithChartV2", tarfile.REGTYPE, 0o777, "", False),
+            ("./usr/lib/rfdudesmithchartv2/lib/link", tarfile.SYMTYPE, 0o777, "../../../libQt6Core.so.6", False),
+            ("./usr/lib/rfdudesmithchartv2/lib/link", tarfile.SYMTYPE, 0o777, "/usr/lib/libQt6Core.so.6", False),
+            ("./usr/lib/rfdudesmithchartv2/lib/device", tarfile.CHRTYPE, 0o644, "", False),
+            ("./usr/lib/rfdudesmithchartv2/lib/hardlink", tarfile.LNKTYPE, 0o644, "etc/passwd", False),
+        ):
+            with self.subTest(name=name, kind=kind, mode=mode):
+                member = tarfile.TarInfo(name)
+                member.type, member.mode, member.linkname = kind, mode, link
+                if passes:
+                    package_check.check_payload_member(member)
+                else:
+                    with self.assertRaises(RuntimeError):
+                        package_check.check_payload_member(member)
+        member = tarfile.TarInfo("./usr/bin/RFdudeSmithChartV2")
+        member.uid = 1000
+        with self.assertRaises(RuntimeError):
+            package_check.check_payload_member(member)
+
+    def test_rpaths_are_private_and_relocatable(self):
+        private = Path("/extracted/usr/lib/rfdudesmithchartv2")
+        for entry, passes in (
+            ("$ORIGIN/../lib", True), ("${ORIGIN}/../lib", True),
+            ("/opt/Qt/lib", False), ("$ORIGIN/../../../lib", False),
+            ("$ORIGIN/../lib:", False),
+        ):
+            with self.subTest(entry=entry), patch.object(
+                package_check.subprocess, "run",
+                return_value=subprocess.CompletedProcess([], 0, f"(RUNPATH) Library runpath: [{entry}]\n"),
+            ):
+                if passes:
+                    package_check.check_rpaths(private / "bin/app", private)
+                else:
+                    with self.assertRaises(RuntimeError):
+                        package_check.check_rpaths(private / "bin/app", private)
+
     def control_archive(self, name, kind=tarfile.REGTYPE):
         data = io.BytesIO()
         with tarfile.open(fileobj=data, mode="w") as archive:
@@ -124,7 +185,7 @@ class CPackGateTests(unittest.TestCase):
                 ] if source else []),
                 f"-DPython3_EXECUTABLE={sys.executable}",
                 *(f"-DRFDUDE_{tool}={sys.executable}" for tool in (
-                    "DPKG_DEB", "LDD", "XVFB_RUN", "XAUTH",
+                    "DPKG_DEB", "LDD", "XVFB_RUN", "XAUTH", "READELF",
                 )),
                 "-DCPACK_PACKAGE_FILES=" + ";".join(str(root / name) for name in packages),
                 "-P", str(script),

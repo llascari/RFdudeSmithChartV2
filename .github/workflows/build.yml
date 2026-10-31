@@ -14,6 +14,7 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -140,7 +141,7 @@ jobs:
         id: linux-package-check
         if: ${{ success() && runner.os == 'Linux' && steps.package.outcome == 'success' }}
         run: |
-          python3 -m unittest discover -s tests -p LinuxPackageTests.py
+          python3 -m unittest discover -s tests -p '*Tests.py'
           python3 tools/check_linux_package.py packages/*.deb
       - name: Upload package artifact
         if: ${{ always() && steps.package.outcome == 'success' && (runner.os != 'Linux' || steps.linux-package-check.outcome == 'success') && (runner.os != 'Windows' || steps.installer.outcome == 'success') && (runner.os != 'macOS' || steps.macos-package-name.outcome == 'success') }}
@@ -154,13 +155,112 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  linux-install:
+    name: Linux installer (${{ matrix.image }})
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu:22.04, ubuntu:24.04, ubuntu:26.04, debian:12, debian:13]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-linux-x64
+          path: installers
+      - name: Install and remove beside distro KDE and Qt
+        env:
+          IMAGE: ${{ matrix.image }}
+        shell: bash
+        run: |
+          mkdir -p installer-logs
+          docker run --rm --volume "$PWD:/workspace:ro" --env DEBIAN_FRONTEND=noninteractive "$IMAGE" \
+            bash -euxo pipefail -c '
+              apt-get update
+              apt-get install -y --no-install-recommends python3 binutils kdialog xvfb xauth xdotool dbus-x11 \
+                libgl1 libegl1 libx11-6 libxkbcommon0 libxkbcommon-x11-0 libxcb1 libxcb-cursor0 \
+                libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
+              xvfb-run -a dbus-run-session -- python3 /workspace/tools/test_linux_install.py /workspace/installers/*.deb
+            ' 2>&1 | tee installer-logs/linux-install.txt
+      - name: Upload lifecycle logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-install-${{ strategy.job-index }}-logs
+          path: installer-logs
+          if-no-files-found: warn
+          retention-days: 7
+
+  windows-install:
+    name: Windows installer (no Qt SDK)
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-windows-x64
+          path: installers
+      - name: Install, launch native GUI, reinstall and uninstall
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem installers/*-setup.exe)
+          if ($installers.Count -ne 1) { throw "Expected exactly one Windows installer" }
+          ./tools/test_windows_install.ps1 -Installer $installers[0].FullName
+      - name: Upload lifecycle logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-install-logs
+          path: installer-logs
+          if-no-files-found: warn
+          retention-days: 7
+
+  macos-install:
+    name: macOS installer (${{ matrix.architecture }}, no Qt SDK)
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            architecture: arm64
+            artifact: macos-arm64
+          - os: macos-15-intel
+            architecture: x86_64
+            artifact: macos-x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RFdudeSmithChartV2-${{ matrix.artifact }}
+          path: installers
+      - name: Mount final DMG, relocate app and launch native GUI
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: python3 tools/test_macos_install.py installers/*.dmg "$ARCHITECTURE"
+      - name: Upload lifecycle logs and desktop capture
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-install-logs
+          path: installer-logs
+          if-no-files-found: warn
+          retention-days: 7
+
   publish:
     name: Publish passing installers
-    needs: build
+    needs: [build, linux-install, windows-install, macos-install]
     if: >-
       ${{ success() && github.event_name != 'pull_request' &&
           (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

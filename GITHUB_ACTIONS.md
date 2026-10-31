@@ -27,8 +27,9 @@ or GitHub Copilot.
 
 Linux packages are extracted and checked for private Qt runtime paths, then
 smoke-tested under Xvfb before upload. macOS builds explicitly set and verify
-their CPU architecture. These checks do not replace clean-machine desktop
-testing. The original v0.1.0 Linux release
+their CPU architecture. Separate installer jobs then test the actual downloads
+on runners without the build job's Qt SDK; see the coverage below.
+The original v0.1.0 Linux release
 installer is unsafe and has been replaced on the release page with Debian
 revision `0.1.0-1`: see the warning in [README.md](README.md).
 
@@ -52,11 +53,11 @@ to that branch. Manual runs remain available from the workflow's branch
 selector.
 
 Artifacts are temporary workflow-run downloads retained for 30 days.
-After all four platform jobs pass, builds of `main` (push or manual dispatch)
+After all four build jobs and all installer jobs pass, builds of `main` (push or manual dispatch)
 automatically publish an immutable pre-release tagged
 `build-<run-id>-<attempt>`. Version-tag builds publish under the `v<version>` tag,
 which must match the CMake project version. Pull requests, other branches, and
-any failed platform job cannot publish. Diagnostic `-tests-failed` artifacts
+any failed build or installer job cannot publish. Diagnostic `-tests-failed` artifacts
 are never release inputs.
 
 The publishing job downloads only this run's four verified installer artifacts
@@ -75,8 +76,47 @@ Only the publishing job has `contents: write`, using the built-in
 `GITHUB_TOKEN`. No personal token or signing secrets are needed. The same
 behavior applies within forks once Actions and release-writing permissions
 are allowed. These installers remain unsigned and unsupported; the macOS DMGs
-are not notarized. Passing CI is not exhaustive clean-machine
-installation/uninstallation certification.
+are not notarized. Passing CI is not exhaustive clean-machine certification.
+
+## Installer safety gates
+
+These checks operate on the final DEB, setup EXE, and both DMGs, not the build
+directory. Installer jobs have read-only repository permissions and bounded
+timeouts. Their logs are retained for seven days, including on failure.
+Build artifacts are candidates until the entire workflow succeeds; the public
+pre-release cannot publish until every installer matrix entry passes.
+
+| Platform | Required checks |
+|---|---|
+| Linux | Before extraction: package identity/architecture, no package replacement/conflict metadata, approved archive paths/types, root ownership, safe modes, no escaping links or maintainer scripts. Every ELF runtime search path must be relative and private. |
+| Linux lifecycle | Disposable Ubuntu 22.04, 24.04, 26.04 and Debian 12/13 containers with distro `kdialog` and Qt/KDE dependencies. Install, open an example in a visible XCB window, reinstall, purge. Hash distro Qt/KDE files and loader configuration; verify Qt loader cache, KDE canary startup, and existing package versions remain unchanged. Inspect the running app's actual Qt/plugin mappings. No installation is performed on the maintainer's host. |
+| Windows | Separate Windows 2022 runner, no Qt SDK installation, Qt/Python removed from process PATH. Silent Inno Setup install into a path containing spaces, installed example/native window, loaded Qt/Windows plugin paths, Start Menu target, reinstall, uninstall. Shared system Qt DLL hashes and persistent PATH must remain unchanged. |
+| macOS | Separate native Intel and Apple Silicon runners, no Qt SDK installation. Mount final DMG read-only, copy app into a path containing spaces, unmount before launching. Inspect every Mach-O's architecture/dependencies/RPATH and bundle symlinks. Require private Qt/Cocoa loading, help output and a visible native window; capture desktop, remove copied app. |
+
+### Coverage limits and remaining release work
+
+- Xvfb plus a KDE application is a meaningful regression test for the Linux
+  library-clobbering failure, **not** a booted Kubuntu/Plasma session. Real
+  desktop/VM tests still need to cover Wayland/XWayland, graphics drivers,
+  themes, and installation while Plasma/Dolphin are already running.
+- Linux reinstall tests same-revision replacement, not arbitrary historical
+  upgrade paths or recovery from an interrupted package-manager operation.
+- Hosted Windows runners already contain Microsoft runtimes. This verifies
+  Qt independence, not a compiler/redist-free Windows installation.
+  Verify the official VC++ redistributable on a pristine Windows VM.
+- macOS testing uses the current runner OS, not a minimum-OS matrix. Direct
+  executable launch does not test browser quarantine, Finder launch, Gatekeeper
+  or notarization. No protection is disabled by these checks.
+- Windows/macOS installers remain unsigned. Signing/notarization require
+  maintainer credentials and separate release work, not a simulated CI pass.
+
+The design follows [Qt plugin deployment](https://doc.qt.io/qt-6/deployment-plugins.html)
+and [`qt.conf`](https://doc.qt.io/qt-6/qt-conf.html),
+[Debian shared-library policy](https://www.debian.org/doc/debian-policy/ch-sharedlibs.html)
+and [package relationships](https://www.debian.org/doc/debian-policy/ch-relationships.html),
+[Qt Windows deployment](https://doc.qt.io/qt-6/windows-deployment.html),
+[Qt macOS deployment](https://doc.qt.io/qt-6/macos-deployment.html), and
+[Apple notarization guidance](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
 
 ## Prompt for Copilot to adapt a fork
 

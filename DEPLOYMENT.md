@@ -113,7 +113,7 @@ can change. Check
 [GitHub Actions billing](https://docs.github.com/en/actions/concepts/billing-and-usage)
 and [runner pricing](https://docs.github.com/en/billing/reference/actions-runner-pricing)
 for current details before enabling paid overage. The publishing job waits for
-all four platform jobs, uploads the complete verified set to a draft, then publishes
+all four build jobs and every installer safety job, uploads the complete verified set to a draft, then publishes
 it as a pre-release. Failed builds cannot publish.
 
 ## 3. Build a distributable manually
@@ -184,12 +184,22 @@ The `package` build target uses the same gate. Ordinary builds and staging with
 are not installers and remain outside this check.
 
 The check extracts rather than
-installs the package, rejects files outside the private runtime and approved
-desktop/data locations, rejects maintainer scripts and other unexpected control
+installs the package, checks archive paths, types, ownership and permissions
+before extraction, rejects package replacement/conflict metadata and files
+outside the private runtime and approved desktop/data locations, rejects
+maintainer scripts and other unexpected control
 entries, checks Qt library resolution for the executable and every bundled
-shared library/plugin, and launches the packaged command under Xvfb. Loader
+shared library/plugin, verifies relative/private ELF search paths with `readelf`,
+and launches the packaged command under Xvfb. Loader
 diagnostics must also show that all actually loaded Qt libraries are private.
 CI additionally rechecks the final output before uploading Linux installers.
+Before public pre-release publication, separate installer jobs exercise
+install/reinstall/purge beside distro KDE/Qt on Ubuntu 22.04/24.04/26.04 and
+Debian 12/13. Distro runtime hashes, loader configuration/cache, a KDE canary,
+existing package versions, and visible application windows are checked.
+Windows and both macOS architectures also have separate final-installer
+native GUI checks without a Qt SDK. See
+[installer gates and coverage limits](GITHUB_ACTIONS.md#installer-safety-gates).
 To recheck an existing package without installing it:
 
 ```sh
