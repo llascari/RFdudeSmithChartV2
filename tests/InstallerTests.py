@@ -19,8 +19,9 @@ class InstallerTests(unittest.TestCase):
             "app:\n\t@rpath/QtCore.framework/Versions/A/QtCore (compatibility version 6.0.0)\n"
             "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n",
             "cmd LC_RPATH\ncmdsize 48\npath @executable_path/../Frameworks (offset 12)\n",
-        )):
+        )) as run:
             macos.check_macho(Path("/app/binary"), "arm64")
+            self.assertEqual(run.call_args_list[1].args[:4], ("otool", "-arch", "arm64", "-L"))
 
     def test_macho_rejects_missing_architecture(self):
         with patch.object(macos, "run", return_value="x86_64\n"):

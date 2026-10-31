@@ -22,11 +22,11 @@ def run(*args: str, **kwargs) -> str:
 def check_macho(binary: Path, architecture: str) -> None:
     if architecture not in run("lipo", "-archs", str(binary)).split():
         raise RuntimeError(f"Missing {architecture} slice in {binary}")
-    for line in run("otool", "-L", str(binary)).splitlines()[1:]:
+    for line in run("otool", "-arch", architecture, "-L", str(binary)).splitlines()[1:]:
         dependency = line.strip().split(" (", 1)[0]
         if not dependency.startswith(("@rpath/", "@loader_path/", "@executable_path/", "/System/Library/", "/usr/lib/")):
             raise RuntimeError(f"Non-portable Mach-O dependency in {binary}: {dependency}")
-    commands = run("otool", "-l", str(binary))
+    commands = run("otool", "-arch", architecture, "-l", str(binary))
     for entry in re.findall(r"cmd LC_RPATH\s+cmdsize \d+\s+path (\S+) \(offset", commands):
         if not entry.startswith(("@loader_path", "@executable_path")):
             raise RuntimeError(f"Non-relative Mach-O RPATH in {binary}: {entry}")
