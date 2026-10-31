@@ -1,8 +1,10 @@
+import ctypes
 import importlib.util
 from pathlib import Path
+import plistlib
 import subprocess
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, call, patch
 
 
 spec = importlib.util.spec_from_file_location(
@@ -53,13 +55,38 @@ class InstallerTests(unittest.TestCase):
                 macos.check_macho(Path("/test.app/Contents/MacOS/binary"), "arm64")
 
     def test_native_window_probe_uses_process_and_size(self):
-        with patch.object(macos, "run", return_value="true\n") as run:
-            self.assertTrue(macos.has_visible_window(1234))
-            script = run.call_args.args[-1]
-            self.assertIn("kCGWindowOwnerPID === 1234", script)
-            self.assertIn("kCGWindowBounds.Width > 100", script)
-        with patch.object(macos, "run", return_value="false\n"):
-            self.assertFalse(macos.has_visible_window(1234))
+        for pid, width, expected in ((1234, 800, True), (9999, 800, False), (1234, 50, False)):
+            with self.subTest(pid=pid, width=width):
+                payload = plistlib.dumps([{
+                    "kCGWindowOwnerPID": pid,
+                    "kCGWindowBounds": {"Width": width, "Height": 600},
+                }])
+                buffer = ctypes.create_string_buffer(payload)
+                graphics, foundation = MagicMock(), MagicMock()
+                graphics.CGWindowListCopyWindowInfo.return_value = 1
+                foundation.CFPropertyListCreateData.return_value = 2
+                foundation.CFDataGetLength.return_value = len(payload)
+                foundation.CFDataGetBytePtr.return_value = ctypes.addressof(buffer)
+                with patch.object(macos.ctypes, "CDLL", side_effect=(graphics, foundation)):
+                    self.assertEqual(macos.has_visible_window(1234), expected)
+                graphics.CGWindowListCopyWindowInfo.assert_called_once_with(1, 0)
+                foundation.CFRelease.assert_has_calls([call(2), call(1)])
+
+    def test_native_window_probe_reports_api_failure(self):
+        graphics, foundation = MagicMock(), MagicMock()
+        graphics.CGWindowListCopyWindowInfo.return_value = None
+        with patch.object(macos.ctypes, "CDLL", side_effect=(graphics, foundation)):
+            with self.assertRaisesRegex(RuntimeError, "could not enumerate"):
+                macos.has_visible_window(1234)
+
+    def test_native_window_probe_releases_list_on_serialization_failure(self):
+        graphics, foundation = MagicMock(), MagicMock()
+        graphics.CGWindowListCopyWindowInfo.return_value = 1
+        foundation.CFPropertyListCreateData.return_value = None
+        with patch.object(macos.ctypes, "CDLL", side_effect=(graphics, foundation)):
+            with self.assertRaisesRegex(RuntimeError, "could not serialize"):
+                macos.has_visible_window(1234)
+        foundation.CFRelease.assert_called_once_with(1)
 
     def test_command_failures_include_output(self):
         with patch.object(

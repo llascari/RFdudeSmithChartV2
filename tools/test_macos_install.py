@@ -2,6 +2,7 @@
 """Mount the final DMG and check a relocated app on a runner without a Qt SDK."""
 
 import argparse
+import ctypes
 import os
 from pathlib import Path
 import plistlib
@@ -38,13 +39,41 @@ def check_macho(binary: Path, architecture: str) -> None:
 
 
 def has_visible_window(pid: int) -> bool:
-    script = (
-        "ObjC.import('CoreGraphics'); "
-        "var windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo(1, 0)); "
-        f"windows.some(function(w) {{ return w.kCGWindowOwnerPID === {pid} && "
-        "w.kCGWindowBounds.Width > 100 && w.kCGWindowBounds.Height > 100; });"
+    graphics = ctypes.CDLL("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")
+    foundation = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
+    graphics.CGWindowListCopyWindowInfo.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+    graphics.CGWindowListCopyWindowInfo.restype = ctypes.c_void_p
+    foundation.CFPropertyListCreateData.argtypes = [
+        ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long, ctypes.c_ulong, ctypes.c_void_p,
+    ]
+    foundation.CFPropertyListCreateData.restype = ctypes.c_void_p
+    foundation.CFDataGetLength.argtypes = [ctypes.c_void_p]
+    foundation.CFDataGetLength.restype = ctypes.c_long
+    foundation.CFDataGetBytePtr.argtypes = [ctypes.c_void_p]
+    foundation.CFDataGetBytePtr.restype = ctypes.c_void_p
+    foundation.CFRelease.argtypes = [ctypes.c_void_p]
+    foundation.CFRelease.restype = None
+    window_list = graphics.CGWindowListCopyWindowInfo(1, 0)
+    if not window_list:
+        raise RuntimeError("CoreGraphics could not enumerate on-screen windows")
+    try:
+        data = foundation.CFPropertyListCreateData(None, window_list, 100, 0, None)
+        if not data:
+            raise RuntimeError("CoreFoundation could not serialize window information")
+        try:
+            windows = plistlib.loads(ctypes.string_at(
+                foundation.CFDataGetBytePtr(data), foundation.CFDataGetLength(data),
+            ))
+        finally:
+            foundation.CFRelease(data)
+    finally:
+        foundation.CFRelease(window_list)
+    return any(
+        window["kCGWindowOwnerPID"] == pid
+        and window["kCGWindowBounds"]["Width"] > 100
+        and window["kCGWindowBounds"]["Height"] > 100
+        for window in windows
     )
-    return run("osascript", "-l", "JavaScript", "-e", script).strip() == "true"
 
 
 def main() -> None:
