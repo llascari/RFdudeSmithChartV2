@@ -36,7 +36,17 @@ private:
     void buildActions();
     void refresh();
     bool change(const std::function<void(rf::Document&)>& mutation);
+
+    /// @brief Adds a component using the default connection for its type.
+    /// @param kind Component type. The editor opens so the user can set its values.
     void addComponent(rf::Kind kind);
+
+    /// @brief Adds a component with a given connection, for example from a palette button.
+    /// @details The editor opens with this connection selected; the user can still change
+    /// it there. Nothing is added if the editor is cancelled.
+    /// @param kind Component type.
+    /// @param connection How the component is connected.
+    void addComponent(rf::Kind kind, rf::Connection connection);
     void editSelected();
     void deleteSelected();
     void select(int index);

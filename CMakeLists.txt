@@ -48,6 +48,8 @@ target_include_directories(rfcore PUBLIC src)
 set_target_properties(rfcore PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 
 add_library(rfui
+    src/ComponentPalette.cpp
+    src/ComponentPalette.h
     src/DocumentIO.cpp
     src/DocumentIO.h
     src/Editors.cpp

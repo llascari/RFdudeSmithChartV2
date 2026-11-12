@@ -500,10 +500,16 @@ std::optional<rf::Document> editSettings(QWidget* parent, const rf::Document& or
             QMessageBox::warning(&dialog, "Invalid network", e.what());
         }
     });
+
     if (auto* target = dialog.findChild<QDoubleSpinBox*>(focusField); target && !focusField.isEmpty()) {
-        target->setFocus();
-        target->selectAll();
+        if (target->isEnabled()) {
+            target->setFocus();
+            target->selectAll();
+        } else {
+            measuredLoad->setFocus();  // an imported load replaces these fields; let the user switch it off
+        }
     }
+
     if (dialog.exec() != QDialog::Accepted) return std::nullopt;
     return result;
 }

@@ -149,16 +149,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          appimagetool_sha256=62aebc77c2149e96b593b94da9bbd1881e0984a56399ff6d7a03b7ddd7c9ce68
-          runtime_sha256=617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46
-          curl --fail --location --silent --show-error --retry 3 \
-            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
-            --output appimagetool.AppImage
-          echo "$appimagetool_sha256  appimagetool.AppImage" | sha256sum --check
-          curl --fail --location --silent --show-error --retry 3 \
-            https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 \
-            --output runtime-x86_64
-          echo "$runtime_sha256  runtime-x86_64" | sha256sum --check
+
+          # Pinned, immutable releases (never "continuous", which upstream overwrites in place).
+          # To update: change the tag, download the asset yourself, compare its SHA-256 with the
+          # digest shown on the GitHub release page, then put the verified value here.
+          appimagetool_tag=1.9.1
+          appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+          runtime_tag=20251108
+          runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+
+          # fetch <url> <output file> <expected sha256>
+          fetch() {
+            curl --fail --location --silent --show-error --retry 3 "$1" --output "$2"
+            actual="$(sha256sum "$2" | cut -d ' ' -f 1)"
+            if [[ "$actual" != "$3" ]]; then
+              echo "SHA-256 mismatch for $2 ($1)" >&2
+              echo "  expected: $3" >&2
+              echo "  actual:   $actual" >&2
+              exit 1
+            fi
+            echo "$2: SHA-256 OK"
+          }
+          fetch "https://github.com/AppImage/appimagetool/releases/download/${appimagetool_tag}/appimagetool-x86_64.AppImage" \
+            appimagetool.AppImage "$appimagetool_sha256"
+          fetch "https://github.com/AppImage/type2-runtime/releases/download/${runtime_tag}/runtime-x86_64" \
+            runtime-x86_64 "$runtime_sha256"
+
           chmod +x appimagetool.AppImage
 
           version="$(python3 -c 'import re; from pathlib import Path; text = Path("CMakeLists.txt").read_text(); match = re.search(r"^\s*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)\s*$", text, re.MULTILINE); print(match.group(1) if match else exit("Could not read the project version from CMakeLists.txt"))')"
