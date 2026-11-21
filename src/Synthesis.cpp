@@ -134,26 +134,34 @@ void addDoubleStub(Document& document, const MatchSpecification& s)
     document.components.push_back(matchStub(s, z0, (y0 * root + gl * y0) / gl));
 }
 
-// Pi match: two back-to-back L sections that meet at a virtual resistance Rv, which
-// is lower than both terminations. The series elements of the two halves share one
-// branch, giving shunt - series - shunt. M. Steer, Microwave and RF Design: Networks,
-// NC State University Libraries, 2019, p. 174 (as in the Qucs-S PiMatching tool).
-// Each half is low-pass or high-pass. The start impedance may be complex.
+// Pi and Tee matches are two back-to-back L sections that meet at a virtual
+// resistance Rv. Rv is below both terminations for Pi and above both for Tee, which
+// needs the same minimum loaded Q in both cases.
+void requireLoadedQ(const MatchSpecification& s, double rs, double rl)
+{
+    const double ratio = std::max(rs, rl) / std::min(rs, rl);
+    if (!std::isfinite(s.q) || s.q * s.q + 1 <= ratio) {
+        char text[96];
+        std::snprintf(text, sizeof text, "Pi and Tee matching need a loaded Q above %.3f.",
+                      std::sqrt(ratio - 1));
+        throw std::invalid_argument(text);
+    }
+}
+
+// Pi match: the Rv sits below both terminations and the series elements of the two
+// halves share one branch, giving shunt - series - shunt. M. Steer, Microwave and RF
+// Design: Networks, NC State University Libraries, 2019, p. 174 (as in the Qucs-S
+// PiMatching tool). Each half is low-pass or high-pass. The start impedance may be
+// complex.
 void addPiNetwork(Document& document, const MatchSpecification& s)
 {
     const double rs = s.goalOhms.real();
     const double rl = s.startOhms.real();
     const double xl = s.startOhms.imag();
-    const double ratio = std::max(rs, rl) / std::min(rs, rl);
-    if (!std::isfinite(s.q) || s.q * s.q + 1 <= ratio) {
-        char text[96];
-        std::snprintf(text, sizeof text, "Pi matching needs a loaded Q above %.3f.",
-                      std::sqrt(ratio - 1));
-        throw std::invalid_argument(text);
-    }
+    requireLoadedQ(s, rs, rl);
     const double rv = std::max(rs, rl) / (s.q * s.q + 1);
-    const bool sourceLowPass = s.pi == PiType::LpLp || s.pi == PiType::LpHp;
-    const bool loadLowPass = s.pi == PiType::LpLp || s.pi == PiType::HpLp;
+    const bool sourceLowPass = s.halves == HalfBands::LpLp || s.halves == HalfBands::LpHp;
+    const bool loadLowPass = s.halves == HalfBands::LpLp || s.halves == HalfBands::HpLp;
     // Source half, Rv -> Rs: series X1a, then shunt B1 across Rs.
     const double x1a = std::sqrt(rv * (rs - rv));
     const double b1 = std::sqrt((rs - rv) / rv) / rs;
@@ -166,6 +174,33 @@ void addPiNetwork(Document& document, const MatchSpecification& s)
     addShuntSusceptance(document, b2);
     addSeriesReactance(document, (sourceLowPass ? x1a : -x1a) + x1b);
     addShuntSusceptance(document, sourceLowPass ? b1 : -b1);
+}
+
+// Tee match: Rv sits above both terminations and the shunt elements of the two
+// halves share one branch, giving series - shunt - series. P. Vizmuller, RF Design
+// Guide: Systems, Circuits and Equations, Artech House, 1995 (as in the Qucs-S
+// TeeMatching tool, whose source-side series reactance carries a stray RS/Rv term
+// that leaves a small residual reactance; it is omitted here). Each half is
+// low-pass or high-pass. The start impedance may be complex.
+void addTeeNetwork(Document& document, const MatchSpecification& s)
+{
+    const double rs = s.goalOhms.real();
+    const double rl = s.startOhms.real();
+    const double xl = s.startOhms.imag();
+    requireLoadedQ(s, rs, rl);
+    const double rv = (s.q * s.q + 1) * std::min(rs, rl);
+    const bool sourceLowPass = s.halves == HalfBands::LpLp || s.halves == HalfBands::LpHp;
+    const bool loadLowPass = s.halves == HalfBands::LpLp || s.halves == HalfBands::HpLp;
+    // Load half, Zl -> Rv: series X2 leaves Rl + j*sqrt(Rl*(Rv - Rl)), then shunt B1b
+    // across it gives Rv.
+    const double x2 = std::sqrt(rl * (rv - rl));
+    const double b1b = std::sqrt((rv - rl) / rl) / rv;
+    // Source half, Rv -> Rs: shunt B1a across Rv, then series X1 up to Rs.
+    const double x1 = std::sqrt(rs * (rv - rs));
+    const double b1a = std::sqrt((rv - rs) / rs) / rv;
+    addSeriesReactance(document, (loadLowPass ? x2 : -x2) - xl);
+    addShuntSusceptance(document, (sourceLowPass ? b1a : -b1a) + (loadLowPass ? b1b : -b1b));
+    addSeriesReactance(document, sourceLowPass ? x1 : -x1);
 }
 
 // Validate the synthesized endpoint, not just individual component ranges:
@@ -187,7 +222,7 @@ Document synthesizeMatch(const MatchSpecification& s)
     // Document order is the order of impedance transformations from start to goal,
     // not the left-to-right source-to-load order used in exported schematics.
     if (s.type != MatchType::LowPass && s.type != MatchType::HighPass
-        && s.type != MatchType::QuarterWave && !isStub(s.type) && s.type != MatchType::Pi)
+        && s.type != MatchType::QuarterWave && !isStub(s.type) && s.type != MatchType::Pi && s.type != MatchType::Tee)
         throw std::invalid_argument("Unknown matching topology.");
     if (usesSections(s.type) && (s.sections < 1 || s.sections > 10))
         throw std::invalid_argument("MatchMe requires between 1 and 10 sections.");
@@ -204,6 +239,7 @@ Document synthesizeMatch(const MatchSpecification& s)
                         : s.type == MatchType::HighPass ? "lumped high-pass"
                         : s.type == MatchType::QuarterWave ? "quarter-wave transformer"
                         : s.type == MatchType::Pi ? "pi network"
+                        : s.type == MatchType::Tee ? "tee network"
                                                            : std::string(s.type == MatchType::SingleStub ? "single " : "double ")
                                                                  + (s.stub == StubTermination::Open ? "open" : "shorted") + " stub")
                      + (usesSections(s.type) ? ", " + std::to_string(s.sections) + " section(s)" : "");
@@ -222,9 +258,10 @@ Document synthesizeMatch(const MatchSpecification& s)
         verifyEndpoint(document);
         return document;
     }
-    if (s.type == MatchType::Pi) {
-        // The Pi network absorbs the start reactance; only the goal reactance is added.
-        addPiNetwork(document, s);
+    if (s.type == MatchType::Pi || s.type == MatchType::Tee) {
+        // These networks absorb the start reactance; only the goal reactance is added.
+        if (s.type == MatchType::Pi) addPiNetwork(document, s);
+        else addTeeNetwork(document, s);
         addSeriesReactance(document, s.goalOhms.imag());
         finish(document);
         verifyEndpoint(document);

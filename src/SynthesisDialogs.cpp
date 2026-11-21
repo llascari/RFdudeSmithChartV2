@@ -130,7 +130,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
                          {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
-                          "Single stub", "Double stub", "Pi network"});
+                          "Single stub", "Double stub", "Pi network", "Tee network"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
@@ -139,13 +139,13 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
     auto* reactance = choices(form, "Start reactance matching", "matchReactance",
                               {"Lumped L/C", "Lambda/8 line"});
-    auto* piType = choices(form, "Pi network type (goal side first)", "matchPi",
-                           {"LP-LP", "LP-HP", "HP-LP", "HP-HP"});
+    auto* halfBands = choices(form, "Network type (goal side first)", "matchHalves",
+                              {"LP-LP", "LP-HP", "HP-LP", "HP-HP"});
     auto* loadedQ = field(form, "Loaded Q", "matchQ", 5, 0.1, 100);
     loadedQ->setDecimals(2);
     auto* note = new QLabel;
     note->setWordWrap(true);
-    const auto updateControls = [form, type, sections, stub, reactance, piType, loadedQ, note] {
+    const auto updateControls = [form, type, sections, stub, reactance, halfBands, loadedQ, note] {
         // Indexed like rf::MatchType.
         static const QStringList details = {
                                              "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
@@ -158,6 +158,9 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
                                              "impedance (goal reactance must be 0). The start reactance is matched directly.",
                                              "Shunt, series, shunt network through a virtual resistance below both terminations; Q must "
                                              "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
+                                             "uses a lumped series element.",
+                                             "Series, shunt, series network through a virtual resistance above both terminations; Q must "
+                                             "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
                                              "uses a lumped series element."};
         const auto topology = static_cast<rf::MatchType>(type->currentIndex());
         const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
@@ -169,8 +172,9 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
                              || topology == rf::MatchType::QuarterWave);
         setRowVisible(stub, stubs);
         setRowVisible(reactance, topology == rf::MatchType::QuarterWave);
-        setRowVisible(piType, topology == rf::MatchType::Pi);
-        setRowVisible(loadedQ, topology == rf::MatchType::Pi);
+        const bool halves = topology == rf::MatchType::Pi || topology == rf::MatchType::Tee;
+        setRowVisible(halfBands, halves);
+        setRowVisible(loadedQ, halves);
         note->setText(details.value(type->currentIndex())
                       + " Uses start/goal settings, not the selected row. Equal resistances are "
                         "preserved; no example load is substituted.");
@@ -189,7 +193,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
         s.sections = sections->value();
         s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
         s.startReactance = static_cast<rf::ReactanceMatch>(reactance->currentIndex());
-        s.pi = static_cast<rf::PiType>(piType->currentIndex());
+        s.halves = static_cast<rf::HalfBands>(halfBands->currentIndex());
         s.q = loadedQ->value();
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
