@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <numbers>
 #include <stdexcept>
 
@@ -21,11 +22,30 @@ void addSeriesReactance(Document& document, double reactance)
     document.components.push_back(c);
 }
 
+void addShuntSusceptance(Document& document, double susceptance)
+{
+    if (susceptance == 0) return;
+    auto c = defaultComponent(susceptance > 0 ? Kind::Capacitor : Kind::Inductor,
+                              document.frequencyMHz, document.referenceOhms);
+    c.connection = Connection::Shunt;
+    const double omega = 2 * pi * document.frequencyMHz * 1e6;
+    if (susceptance > 0) c.capacitancePf = susceptance / omega * 1e12;
+    else c.inductanceNh = -1 / (omega * susceptance) * 1e9;
+    validate(c);
+    document.components.push_back(c);
+}
+
 void finish(Document& document)
 {
     document.selected = document.components.empty() ? -1 : 0;
     document.vswrCircle = true;
     validate(document);
+}
+
+bool usesSections(MatchType type)
+{
+    return type == MatchType::LowPass || type == MatchType::HighPass
+           || type == MatchType::QuarterWave;
 }
 
 bool isStub(MatchType type)
@@ -114,6 +134,40 @@ void addDoubleStub(Document& document, const MatchSpecification& s)
     document.components.push_back(matchStub(s, z0, (y0 * root + gl * y0) / gl));
 }
 
+// Pi match: two back-to-back L sections that meet at a virtual resistance Rv, which
+// is lower than both terminations. The series elements of the two halves share one
+// branch, giving shunt - series - shunt. M. Steer, Microwave and RF Design: Networks,
+// NC State University Libraries, 2019, p. 174 (as in the Qucs-S PiMatching tool).
+// Each half is low-pass or high-pass. The start impedance may be complex.
+void addPiNetwork(Document& document, const MatchSpecification& s)
+{
+    const double rs = s.goalOhms.real();
+    const double rl = s.startOhms.real();
+    const double xl = s.startOhms.imag();
+    const double ratio = std::max(rs, rl) / std::min(rs, rl);
+    if (!std::isfinite(s.q) || s.q * s.q + 1 <= ratio) {
+        char text[96];
+        std::snprintf(text, sizeof text, "Pi matching needs a loaded Q above %.3f.",
+                      std::sqrt(ratio - 1));
+        throw std::invalid_argument(text);
+    }
+    const double rv = std::max(rs, rl) / (s.q * s.q + 1);
+    const bool sourceLowPass = s.pi == PiType::LpLp || s.pi == PiType::LpHp;
+    const bool loadLowPass = s.pi == PiType::LpLp || s.pi == PiType::HpLp;
+    // Source half, Rv -> Rs: series X1a, then shunt B1 across Rs.
+    const double x1a = std::sqrt(rv * (rs - rv));
+    const double b1 = std::sqrt((rs - rv) / rv) / rs;
+    // Load half, Zl -> Rv: shunt B2 across Zl makes the real part of the parallel
+    // combination Rv, and the series X1b cancels its remaining reactance.
+    const double magnitude = std::norm(s.startOhms);
+    const double root = std::sqrt(rl * (magnitude - rv * rl) / rv);
+    const double b2 = (xl + (loadLowPass ? root : -root)) / magnitude;
+    const double x1b = rv * (b2 * magnitude - xl) / rl;
+    addShuntSusceptance(document, b2);
+    addSeriesReactance(document, (sourceLowPass ? x1a : -x1a) + x1b);
+    addShuntSusceptance(document, sourceLowPass ? b1 : -b1);
+}
+
 // Validate the synthesized endpoint, not just individual component ranges:
 // extreme ratios can lose precision even when each element is representable.
 void verifyEndpoint(const Document& document)
@@ -133,9 +187,9 @@ Document synthesizeMatch(const MatchSpecification& s)
     // Document order is the order of impedance transformations from start to goal,
     // not the left-to-right source-to-load order used in exported schematics.
     if (s.type != MatchType::LowPass && s.type != MatchType::HighPass
-        && s.type != MatchType::QuarterWave && !isStub(s.type))
+        && s.type != MatchType::QuarterWave && !isStub(s.type) && s.type != MatchType::Pi)
         throw std::invalid_argument("Unknown matching topology.");
-    if (!isStub(s.type) && (s.sections < 1 || s.sections > 10))
+    if (usesSections(s.type) && (s.sections < 1 || s.sections > 10))
         throw std::invalid_argument("MatchMe requires between 1 and 10 sections.");
     Document document;
     document.startOhms = s.startOhms;
@@ -149,9 +203,10 @@ Document synthesizeMatch(const MatchSpecification& s)
                      + (s.type == MatchType::LowPass ? "lumped low-pass"
                         : s.type == MatchType::HighPass ? "lumped high-pass"
                         : s.type == MatchType::QuarterWave ? "quarter-wave transformer"
+                        : s.type == MatchType::Pi ? "pi network"
                                                            : std::string(s.type == MatchType::SingleStub ? "single " : "double ")
                                                                  + (s.stub == StubTermination::Open ? "open" : "shorted") + " stub")
-                     + (isStub(s.type) ? "" : ", " + std::to_string(s.sections) + " section(s)");
+                     + (usesSections(s.type) ? ", " + std::to_string(s.sections) + " section(s)" : "");
     document.qCurves = true;
     if (s.startOhms == s.goalOhms) {
         // The legacy wizard substituted a different load to demonstrate a match.
@@ -163,6 +218,14 @@ Document synthesizeMatch(const MatchSpecification& s)
         // The stubs absorb the start reactance, so no compensating element is added.
         if (s.type == MatchType::SingleStub) addSingleStub(document, s);
         else addDoubleStub(document, s);
+        finish(document);
+        verifyEndpoint(document);
+        return document;
+    }
+    if (s.type == MatchType::Pi) {
+        // The Pi network absorbs the start reactance; only the goal reactance is added.
+        addPiNetwork(document, s);
+        addSeriesReactance(document, s.goalOhms.imag());
         finish(document);
         verifyEndpoint(document);
         return document;

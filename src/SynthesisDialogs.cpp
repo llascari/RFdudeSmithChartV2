@@ -130,7 +130,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
                          {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
-                          "Single stub", "Double stub"});
+                          "Single stub", "Double stub", "Pi network"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
@@ -139,16 +139,41 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
     auto* reactance = choices(form, "Start reactance matching", "matchReactance",
                               {"Lumped L/C", "Lambda/8 line"});
-    const auto updateControls = [form, type, sections, stub, reactance] {
+    auto* piType = choices(form, "Pi network type (goal side first)", "matchPi",
+                           {"LP-LP", "LP-HP", "HP-LP", "HP-HP"});
+    auto* loadedQ = field(form, "Loaded Q", "matchQ", 5, 0.1, 100);
+    loadedQ->setDecimals(2);
+    auto* note = new QLabel;
+    note->setWordWrap(true);
+    const auto updateControls = [form, type, sections, stub, reactance, piType, loadedQ, note] {
+        // Indexed like rf::MatchType.
+        static const QStringList details = {
+                                             "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
+                                             "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
+                                             "Equal-ratio resistance steps with quarter-wave lines. The start reactance is matched with a "
+                                             "lumped element or a lambda/8 line; the goal reactance always uses a lumped element.",
+                                             "A series line then a shunt stub, using the goal resistance as impedance (goal reactance must "
+                                             "be 0). The start reactance is matched directly.",
+                                             "A stub across the load, a lambda/8 line, then a second stub, using the goal resistance as "
+                                             "impedance (goal reactance must be 0). The start reactance is matched directly.",
+                                             "Shunt, series, shunt network through a virtual resistance below both terminations; Q must "
+                                             "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
+                                             "uses a lumped series element."};
         const auto topology = static_cast<rf::MatchType>(type->currentIndex());
         const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
         const auto setRowVisible = [form](QWidget* field, bool visible) {
             field->setVisible(visible);
             form->labelForField(field)->setVisible(visible);
         };
-        sections->setEnabled(!stubs);
+        sections->setEnabled(topology == rf::MatchType::LowPass || topology == rf::MatchType::HighPass
+                             || topology == rf::MatchType::QuarterWave);
         setRowVisible(stub, stubs);
         setRowVisible(reactance, topology == rf::MatchType::QuarterWave);
+        setRowVisible(piType, topology == rf::MatchType::Pi);
+        setRowVisible(loadedQ, topology == rf::MatchType::Pi);
+        note->setText(details.value(type->currentIndex())
+                      + " Uses start/goal settings, not the selected row. Equal resistances are "
+                        "preserved; no example load is substituted.");
     };
     QObject::connect(type, &QComboBox::currentIndexChanged, type, updateControls);
     updateControls();
@@ -157,16 +182,6 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* goalR = field(form, "Goal resistance (ohm)", "matchGoalR", document.goalOhms.real());
     auto* goalX = field(form, "Goal reactance (ohm)", "matchGoalX", document.goalOhms.imag(), -1e12);
     auto* frequency = addFrequencyRow(form, "Design frequency", "matchFrequency", document.frequencyMHz);
-    auto* note = new QLabel("Legacy MatchMe: equal-ratio resistance steps, with series reactance "
-                            "compensation at the ends. Uses start/goal settings, not the selected row. "
-                            "Equal resistances are preserved; no example load is substituted. "
-                            "Single stub: a series line then a shunt stub. Double stub: a stub across the "
-                            "load, a lambda/8 line, then a second stub. Lines and stubs use the goal "
-                            "resistance as impedance (goal reactance must be 0); the start reactance is "
-                            "matched directly and the section count is ignored. Quarter-wave: the start "
-                            "reactance is matched with a lumped element or a lambda/8 line; the goal "
-                            "reactance always uses a lumped element.");
-    note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
         rf::MatchSpecification s;
@@ -174,6 +189,8 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
         s.sections = sections->value();
         s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
         s.startReactance = static_cast<rf::ReactanceMatch>(reactance->currentIndex());
+        s.pi = static_cast<rf::PiType>(piType->currentIndex());
+        s.q = loadedQ->value();
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
         s.frequencyMHz = frequency->value();
