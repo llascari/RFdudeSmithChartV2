@@ -4,12 +4,14 @@
 
 namespace rf {
 
-enum class MatchType { LowPass, HighPass, QuarterWave };
+enum class MatchType { LowPass, HighPass, QuarterWave, SingleStub };
+enum class StubTermination { Open, Shorted };
 
 struct MatchSpecification
 {
     MatchType type = MatchType::LowPass;
-    int sections = 1;
+    int sections = 1;                                // Ignored by SingleStub.
+    StubTermination stub = StubTermination::Open;    // Used only by SingleStub.
     Complex startOhms = {5, 0};
     Complex goalOhms = {50, 0};
     double frequencyMHz = 1000;

@@ -27,6 +27,60 @@ void finish(Document& document)
     document.vswrCircle = true;
     validate(document);
 }
+
+// Single-stub match: a series line of length d from the load, then a shunt stub
+// across it. Closed-form solution from D. M. Pozar, Microwave Engineering, 4th ed.,
+// Wiley, 2012, pp. 234-241 (the first of the two solutions, as in the Qucs-S
+// MatchingNetwork SingleStub tool). The line and the stub both use the goal
+// resistance as characteristic impedance, so the junction admittance becomes 1/goal.
+void addSingleStub(Document& document, const MatchSpecification& s)
+{
+    if (s.goalOhms.imag() != 0)
+        throw std::invalid_argument("Single-stub matching requires a purely resistive goal; "
+                                    "the line and stub use the goal resistance as their impedance.");
+    const double z0 = s.goalOhms.real();
+    const double rl = s.startOhms.real();
+    const double xl = s.startOhms.imag();
+    // t = tan(beta*d) makes Re(Y) at the stub equal to 1/z0.
+    double t;
+    if (rl == z0) {
+        t = -xl / (2 * z0);
+    } else {
+        const double root = std::sqrt(rl / z0 * ((z0 - rl) * (z0 - rl) + xl * xl));
+        t = (xl + root) / (rl - z0);
+    }
+    // Susceptance of the load seen through the line; the stub must cancel it.
+    const double b = (rl * rl * t - (z0 - xl * t) * (z0 * t + xl))
+                     / (z0 * (rl * rl + (z0 * t + xl) * (z0 * t + xl)));
+    const bool open = s.stub == StubTermination::Open;
+    // Open: Y = +j*tan(l)/z0 = -jB. Shorted: Y = -j*cot(l)/z0 = -jB.
+    // Both are folded into [0, pi) because a negative length is a half wavelength longer.
+    double lineAngle = std::atan(t);
+    double stubAngle = open ? std::atan(-b * z0) : std::atan2(1.0, b * z0);
+    if (lineAngle < 0) lineAngle += pi;
+    if (stubAngle < 0) stubAngle += pi;
+    auto line = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
+    line.lineOhms = z0;
+    line.lengthDegrees = lineAngle * 180 / pi;
+    auto stub = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
+    stub.connection = open ? Connection::OpenStub : Connection::ShortStub;
+    stub.lineOhms = z0;
+    stub.lengthDegrees = stubAngle * 180 / pi;
+    document.components.push_back(line);
+    document.components.push_back(stub);
+}
+
+// Validate the synthesized endpoint, not just individual component ranges:
+// extreme ratios can lose precision even when each element is representable.
+void verifyEndpoint(const Document& document)
+{
+    auto endpoint = Impedance::fromOhms(document.startOhms);
+    for (const auto& c : document.components)
+        endpoint = apply(endpoint, c, document.frequencyMHz);
+    if (endpoint.isOpen() || std::abs(endpoint.ohms() - document.goalOhms)
+                                 > 1e-7 * std::max(1.0, std::abs(document.goalOhms)))
+        throw std::invalid_argument("The matching network exceeds the supported numerical precision.");
+}
 }
 
 Document synthesizeMatch(const MatchSpecification& s)
@@ -35,9 +89,9 @@ Document synthesizeMatch(const MatchSpecification& s)
     // Document order is the order of impedance transformations from start to goal,
     // not the left-to-right source-to-load order used in exported schematics.
     if (s.type != MatchType::LowPass && s.type != MatchType::HighPass
-        && s.type != MatchType::QuarterWave)
+        && s.type != MatchType::QuarterWave && s.type != MatchType::SingleStub)
         throw std::invalid_argument("Unknown matching topology.");
-    if (s.sections < 1 || s.sections > 10)
+    if (s.type != MatchType::SingleStub && (s.sections < 1 || s.sections > 10))
         throw std::invalid_argument("MatchMe requires between 1 and 10 sections.");
     Document document;
     document.startOhms = s.startOhms;
@@ -48,14 +102,23 @@ Document synthesizeMatch(const MatchSpecification& s)
     if (s.startOhms.real() <= 0)
         throw std::invalid_argument("MatchMe requires positive starting resistance; an ideal short or purely reactive impedance cannot be losslessly matched to positive resistance.");
     document.title = std::string("MatchMe: ")
-        + (s.type == MatchType::LowPass ? "lumped low-pass"
-            : s.type == MatchType::HighPass ? "lumped high-pass" : "quarter-wave transformer")
-        + ", " + std::to_string(s.sections) + " section(s)";
+                     + (s.type == MatchType::LowPass ? "lumped low-pass"
+                        : s.type == MatchType::HighPass ? "lumped high-pass"
+                        : s.type == MatchType::QuarterWave ? "quarter-wave transformer"
+                        : s.stub == StubTermination::Open ? "single open stub" : "single shorted stub")
+                     + (s.type == MatchType::SingleStub ? "" : ", " + std::to_string(s.sections) + " section(s)");
     document.qCurves = true;
     if (s.startOhms == s.goalOhms) {
         // The legacy wizard substituted a different load to demonstrate a match.
         // Preserve the user's impedances instead of manufacturing an example.
         finish(document);
+        return document;
+    }
+    if (s.type == MatchType::SingleStub) {
+        // The line absorbs the start reactance, so no compensating element is added.
+        addSingleStub(document, s);
+        finish(document);
+        verifyEndpoint(document);
         return document;
     }
     // Reduce the problem to real terminations, then restore the goal reactance.
@@ -73,7 +136,7 @@ Document synthesizeMatch(const MatchSpecification& s)
         for (int i = 0; i < s.sections; ++i) {
             const double r1 = low * std::exp(logRatio * i / s.sections);
             const double r2 = i == s.sections - 1 ? high
-                : low * std::exp(logRatio * (i + 1) / s.sections);
+                                                  : low * std::exp(logRatio * (i + 1) / s.sections);
             if (s.type == MatchType::QuarterWave) {
                 // At 90 degrees, Zin = Zline^2 / Rload. Each section transforms
                 // r1 into r2; its electrical length is referenced to design MHz.
@@ -111,14 +174,7 @@ Document synthesizeMatch(const MatchSpecification& s)
     document.components.insert(document.components.end(), ladder.begin(), ladder.end());
     addSeriesReactance(document, s.goalOhms.imag());
     finish(document);
-    // Validate the synthesized endpoint, not just individual component ranges:
-    // extreme ratios can lose precision even when each element is representable.
-    auto endpoint = Impedance::fromOhms(document.startOhms);
-    for (const auto& c : document.components)
-        endpoint = apply(endpoint, c, document.frequencyMHz);
-    if (endpoint.isOpen() || std::abs(endpoint.ohms() - document.goalOhms)
-        > 1e-7 * std::max(1.0, std::abs(document.goalOhms)))
-        throw std::invalid_argument("The matching network exceeds the supported numerical precision.");
+    verifyEndpoint(document);
     return document;
 }
 
@@ -151,12 +207,12 @@ Document synthesizeFilter(const FilterSpecification& s)
     for (int i = 2; i <= order; ++i) {
         const double sine = std::sin((i - 1) * pi / order);
         g[static_cast<std::size_t>(i)] = 4 * a(i - 1) * a(i)
-            / ((gamma * gamma + sine * sine) * g[static_cast<std::size_t>(i - 1)]);
+                                         / ((gamma * gamma + sine * sine) * g[static_cast<std::size_t>(i - 1)]);
     }
     document.title = std::string("Chebyshev ")
-        + (s.type == FilterType::LowPass ? "low-pass" : "high-pass")
-        + ", order " + std::to_string(order) + ", ripple " + std::to_string(s.rippleDb)
-        + " dB, cutoff " + std::to_string(s.cutoffMHz) + " MHz";
+                     + (s.type == FilterType::LowPass ? "low-pass" : "high-pass")
+                     + ", order " + std::to_string(order) + ", ripple " + std::to_string(s.rippleDb)
+                     + " dB, cutoff " + std::to_string(s.cutoffMHz) + " MHz";
     const double omega = 2 * pi * s.cutoffMHz * 1e6;
     for (int i = 1; i <= order; ++i) {
         // "First" means nearest the starting impedance, as in the legacy list.
@@ -172,10 +228,10 @@ Document synthesizeFilter(const FilterSpecification& s)
         // interchanges L/C and replaces g with 1/g; connection stays unchanged.
         if (inductive)
             c.inductanceNh = s.impedanceOhms / omega
-                * (s.type == FilterType::LowPass ? coefficient : 1 / coefficient) * 1e9;
+                             * (s.type == FilterType::LowPass ? coefficient : 1 / coefficient) * 1e9;
         else
             c.capacitancePf = 1 / (s.impedanceOhms * omega)
-                * (s.type == FilterType::LowPass ? coefficient : 1 / coefficient) * 1e12;
+                              * (s.type == FilterType::LowPass ? coefficient : 1 / coefficient) * 1e12;
         document.components.push_back(c);
     }
     finish(document);

@@ -43,11 +43,11 @@ QComboBox* choices(QFormLayout* form, const QString& label, const QString& name,
 }
 
 std::optional<rf::Document> runWizard(QDialog& dialog, QVBoxLayout* layout,
-                                     const rf::Document& original,
-                                     const std::function<rf::Document()>& generate)
+                                      const rf::Document& original,
+                                      const std::function<rf::Document()>& generate)
 {
     auto* warning = new QLabel("Applying replaces the current network and its start/goal impedances. "
-                              "Cancel leaves it unchanged. Replacement can be undone.");
+                               "Cancel leaves it unchanged. Replacement can be undone.");
     warning->setWordWrap(true);
     layout->addWidget(warning);
     auto* preview = new QPlainTextEdit;
@@ -79,15 +79,15 @@ std::optional<rf::Document> runWizard(QDialog& dialog, QVBoxLayout* layout,
             next.qCurves = original.qCurves || generated.qCurves;
             const auto evaluation = rf::evaluate(next);
             QString text = QString::fromStdString(next.title)
-                + QString("\nFrequency: %1 MHz; Z0: %2 ohm\nStart: %3\nGoal: %4\n\n")
-                    .arg(next.frequencyMHz, 0, 'g', 9).arg(next.referenceOhms, 0, 'g', 9)
-                    .arg(impedanceText(rf::Impedance::fromOhms(next.startOhms)),
-                         impedanceText(rf::Impedance::fromOhms(next.goalOhms)));
+                           + QString("\nFrequency: %1 MHz; Z0: %2 ohm\nStart: %3\nGoal: %4\n\n")
+                                 .arg(next.frequencyMHz, 0, 'g', 9).arg(next.referenceOhms, 0, 'g', 9)
+                                 .arg(impedanceText(rf::Impedance::fromOhms(next.startOhms)),
+                                      impedanceText(rf::Impedance::fromOhms(next.goalOhms)));
             if (next.components.empty()) text += "No matching elements required.\n";
             for (std::size_t i = 0; i < next.components.size(); ++i) {
                 const auto& c = next.components[i];
                 text += QString("%1. %2: %3\n").arg(i + 1)
-                    .arg(QString::fromStdString(rf::connectionName(c.connection)), componentDescription(c));
+                            .arg(QString::fromStdString(rf::connectionName(c.connection)), componentDescription(c));
             }
             text += "\nEndpoint: " + impedanceText(evaluation.nodes.back());
             preview->setPlainText(text);
@@ -129,26 +129,39 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* form = new QFormLayout;
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
-        {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer"});
+                         {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
+                          "Single stub"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
     sections->setValue(1);
     form->addRow("Sections (1-10)", sections);
+    auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
+    const auto updateEnabled = [type, sections, stub] {
+        const bool single = static_cast<rf::MatchType>(type->currentIndex()) == rf::MatchType::SingleStub;
+        sections->setEnabled(!single);
+        stub->setEnabled(single);
+    };
+    QObject::connect(type, &QComboBox::currentIndexChanged, type, updateEnabled);
+    updateEnabled();
     auto* startR = field(form, "Starting resistance (ohm)", "matchStartR", document.startOhms.real(), 0);
     auto* startX = field(form, "Starting reactance (ohm)", "matchStartX", document.startOhms.imag(), -1e12);
     auto* goalR = field(form, "Goal resistance (ohm)", "matchGoalR", document.goalOhms.real());
     auto* goalX = field(form, "Goal reactance (ohm)", "matchGoalX", document.goalOhms.imag(), -1e12);
     auto* frequency = addFrequencyRow(form, "Design frequency", "matchFrequency", document.frequencyMHz);
     auto* note = new QLabel("Legacy MatchMe: equal-ratio resistance steps, with series reactance "
-                           "compensation at the ends. Uses start/goal settings, not the selected row. "
-                           "Equal resistances are preserved; no example load is substituted.");
+                            "compensation at the ends. Uses start/goal settings, not the selected row. "
+                            "Equal resistances are preserved; no example load is substituted. "
+                            "Single stub: a series line then a shunt stub, both with the goal resistance "
+                            "as impedance (goal reactance must be 0); the start reactance is matched "
+                            "directly and the section count is ignored.");
     note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
         rf::MatchSpecification s;
         s.type = static_cast<rf::MatchType>(type->currentIndex());
         s.sections = sections->value();
+        s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
         s.frequencyMHz = frequency->value();
@@ -178,8 +191,8 @@ std::optional<rf::Document> filterWizard(QWidget* parent, const rf::Document& do
     auto* impedance = field(form, "Termination / chart impedance (ohm)", "filterImpedance",
                             document.referenceOhms);
     auto* note = new QLabel("Legacy simple filter synthesis: odd-order Chebyshev LC ladder, "
-                           "equal real start/goal terminations. The preview shows the effective "
-                           "odd order. Analysis frequency is set to the ripple cutoff.");
+                            "equal real start/goal terminations. The preview shows the effective "
+                            "odd order. Analysis frequency is set to the ripple cutoff.");
     note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
