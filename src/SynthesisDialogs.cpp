@@ -139,15 +139,19 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
     auto* reactance = choices(form, "Start reactance matching", "matchReactance",
                               {"Lumped L/C", "Lambda/8 line"});
-    const auto updateEnabled = [type, sections, stub, reactance] {
+    const auto updateControls = [form, type, sections, stub, reactance] {
         const auto topology = static_cast<rf::MatchType>(type->currentIndex());
         const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
+        const auto setRowVisible = [form](QWidget* field, bool visible) {
+            field->setVisible(visible);
+            form->labelForField(field)->setVisible(visible);
+        };
         sections->setEnabled(!stubs);
-        stub->setEnabled(stubs);
-        reactance->setEnabled(topology == rf::MatchType::QuarterWave);
+        setRowVisible(stub, stubs);
+        setRowVisible(reactance, topology == rf::MatchType::QuarterWave);
     };
-    QObject::connect(type, &QComboBox::currentIndexChanged, type, updateEnabled);
-    updateEnabled();
+    QObject::connect(type, &QComboBox::currentIndexChanged, type, updateControls);
+    updateControls();
     auto* startR = field(form, "Starting resistance (ohm)", "matchStartR", document.startOhms.real(), 0);
     auto* startX = field(form, "Starting reactance (ohm)", "matchStartX", document.startOhms.imag(), -1e12);
     auto* goalR = field(form, "Goal resistance (ohm)", "matchGoalR", document.goalOhms.real());
