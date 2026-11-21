@@ -136,13 +136,13 @@ void addDoubleStub(Document& document, const MatchSpecification& s)
 
 // Pi and Tee matches are two back-to-back L sections that meet at a virtual
 // resistance Rv. Rv is below both terminations for Pi and above both for Tee, which
-// needs the same minimum loaded Q in both cases.
+// needs the same minimum loaded Q in both cases. The tapped networks need it too.
 void requireLoadedQ(const MatchSpecification& s, double rs, double rl)
 {
     const double ratio = std::max(rs, rl) / std::min(rs, rl);
     if (!std::isfinite(s.q) || s.q * s.q + 1 <= ratio) {
         char text[96];
-        std::snprintf(text, sizeof text, "Pi and Tee matching need a loaded Q above %.3f.",
+        std::snprintf(text, sizeof text, "This network needs a loaded Q above %.3f.",
                       std::sqrt(ratio - 1));
         throw std::invalid_argument(text);
     }
@@ -203,6 +203,34 @@ void addTeeNetwork(Document& document, const MatchSpecification& s)
     addSeriesReactance(document, sourceLowPass ? x1 : -x1);
 }
 
+// Tapped-C and tapped-L matches: shunt - series - shunt, where the loaded Q is that of
+// the shunt element on the higher-resistance side (as in the Qucs-S TappedCMatching
+// and TappedLMatching tools). With Rhigh and Rlow the larger and smaller terminations,
+// Q2 = sqrt(Rlow/Rhigh * (Q^2 + 1) - 1) is the Q of the other shunt element:
+//   tapped-C: shunt L = Rhigh/(w Q) on the high side, shunt C = Q2/(w Rlow) on the
+//             low side and series C = C2 (Q2^2 + 1)/(Q Q2 - Q2^2);
+//   tapped-L: shunt C = Q/(w Rhigh) on the high side, shunt L = Rlow/(w Q2) on the
+//             low side and series L = L2 (Q Q2 - Q2^2)/(Q2^2 + 1).
+// The two differ only by the sign of every susceptance and reactance, which is used
+// below. The start reactance is cancelled first by a lumped series element.
+void addTappedNetwork(Document& document, const MatchSpecification& s)
+{
+    const double rs = s.goalOhms.real();
+    const double rl = s.startOhms.real();
+    requireLoadedQ(s, rs, rl);
+    const double high = std::max(rs, rl);
+    const double low = std::min(rs, rl);
+    const double q2 = std::sqrt(low / high * (s.q * s.q + 1) - 1);
+    const double sign = s.tap == TapElement::Capacitor ? -1 : 1;
+    const double highSusceptance = sign * s.q / high;
+    const double lowSusceptance = -sign * q2 / low;
+    const double reactance = sign * low * (s.q - q2) / (q2 * q2 + 1);
+    addSeriesReactance(document, -s.startOhms.imag());
+    addShuntSusceptance(document, rl > rs ? highSusceptance : lowSusceptance);
+    addSeriesReactance(document, reactance);
+    addShuntSusceptance(document, rl > rs ? lowSusceptance : highSusceptance);
+}
+
 // Validate the synthesized endpoint, not just individual component ranges:
 // extreme ratios can lose precision even when each element is representable.
 void verifyEndpoint(const Document& document)
@@ -222,7 +250,8 @@ Document synthesizeMatch(const MatchSpecification& s)
     // Document order is the order of impedance transformations from start to goal,
     // not the left-to-right source-to-load order used in exported schematics.
     if (s.type != MatchType::LowPass && s.type != MatchType::HighPass
-        && s.type != MatchType::QuarterWave && !isStub(s.type) && s.type != MatchType::Pi && s.type != MatchType::Tee)
+        && s.type != MatchType::QuarterWave && !isStub(s.type) && s.type != MatchType::Pi && s.type != MatchType::Tee
+        && s.type != MatchType::Tapped)
         throw std::invalid_argument("Unknown matching topology.");
     if (usesSections(s.type) && (s.sections < 1 || s.sections > 10))
         throw std::invalid_argument("MatchMe requires between 1 and 10 sections.");
@@ -240,6 +269,7 @@ Document synthesizeMatch(const MatchSpecification& s)
                         : s.type == MatchType::QuarterWave ? "quarter-wave transformer"
                         : s.type == MatchType::Pi ? "pi network"
                         : s.type == MatchType::Tee ? "tee network"
+                        : s.type == MatchType::Tapped ? (s.tap == TapElement::Capacitor ? "tapped-C network" : "tapped-L network")
                                                            : std::string(s.type == MatchType::SingleStub ? "single " : "double ")
                                                                  + (s.stub == StubTermination::Open ? "open" : "shorted") + " stub")
                      + (usesSections(s.type) ? ", " + std::to_string(s.sections) + " section(s)" : "");
@@ -258,10 +288,11 @@ Document synthesizeMatch(const MatchSpecification& s)
         verifyEndpoint(document);
         return document;
     }
-    if (s.type == MatchType::Pi || s.type == MatchType::Tee) {
-        // These networks absorb the start reactance; only the goal reactance is added.
+    if (s.type == MatchType::Pi || s.type == MatchType::Tee || s.type == MatchType::Tapped) {
+        // Each of these handles the start reactance itself; only the goal reactance is added.
         if (s.type == MatchType::Pi) addPiNetwork(document, s);
-        else addTeeNetwork(document, s);
+        else if (s.type == MatchType::Tee) addTeeNetwork(document, s);
+        else addTappedNetwork(document, s);
         addSeriesReactance(document, s.goalOhms.imag());
         finish(document);
         verifyEndpoint(document);

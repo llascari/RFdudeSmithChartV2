@@ -130,7 +130,8 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
                          {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
-                          "Single stub", "Double stub", "Pi network", "Tee network"});
+                          "Single stub", "Double stub", "Pi network", "Tee network",
+                          "Tapped resonator"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
@@ -141,11 +142,13 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
                               {"Lumped L/C", "Lambda/8 line"});
     auto* halfBands = choices(form, "Network type (goal side first)", "matchHalves",
                               {"LP-LP", "LP-HP", "HP-LP", "HP-HP"});
+    auto* tap = choices(form, "Tapped element", "matchTap",
+                        {"Capacitor (tapped-C)", "Inductor (tapped-L)"});
     auto* loadedQ = field(form, "Loaded Q", "matchQ", 5, 0.1, 100);
     loadedQ->setDecimals(2);
     auto* note = new QLabel;
     note->setWordWrap(true);
-    const auto updateControls = [form, type, sections, stub, reactance, halfBands, loadedQ, note] {
+    const auto updateControls = [form, type, sections, stub, reactance, halfBands, tap, loadedQ, note] {
         // Indexed like rf::MatchType.
         static const QStringList details = {
                                              "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
@@ -161,7 +164,10 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
                                              "uses a lumped series element.",
                                              "Series, shunt, series network through a virtual resistance above both terminations; Q must "
                                              "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
-                                             "uses a lumped series element."};
+                                             "uses a lumped series element.",
+                                             "Shunt, series, shunt network with a tapped capacitor (tapped-C) or inductor (tapped-L); Q "
+                                             "is that of the shunt element on the higher resistance and must exceed sqrt(Rmax/Rmin - 1). "
+                                             "The start and goal reactances use lumped series elements."};
         const auto topology = static_cast<rf::MatchType>(type->currentIndex());
         const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
         const auto setRowVisible = [form](QWidget* field, bool visible) {
@@ -173,8 +179,10 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
         setRowVisible(stub, stubs);
         setRowVisible(reactance, topology == rf::MatchType::QuarterWave);
         const bool halves = topology == rf::MatchType::Pi || topology == rf::MatchType::Tee;
+        const bool tapped = topology == rf::MatchType::Tapped;
         setRowVisible(halfBands, halves);
-        setRowVisible(loadedQ, halves);
+        setRowVisible(tap, tapped);
+        setRowVisible(loadedQ, halves || tapped);
         note->setText(details.value(type->currentIndex())
                       + " Uses start/goal settings, not the selected row. Equal resistances are "
                         "preserved; no example load is substituted.");
@@ -194,6 +202,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
         s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
         s.startReactance = static_cast<rf::ReactanceMatch>(reactance->currentIndex());
         s.halves = static_cast<rf::HalfBands>(halfBands->currentIndex());
+        s.tap = static_cast<rf::TapElement>(tap->currentIndex());
         s.q = loadedQ->value();
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
