@@ -28,17 +28,50 @@ void finish(Document& document)
     validate(document);
 }
 
+bool isStub(MatchType type)
+{
+    return type == MatchType::SingleStub || type == MatchType::DoubleStub;
+}
+
+// Stub matches use the goal resistance as the characteristic impedance of every
+// line and stub, so the admittance at the stub junction becomes 1/goal.
+double stubLineOhms(const MatchSpecification& s)
+{
+    if (s.goalOhms.imag() != 0)
+        throw std::invalid_argument("Stub matching requires a purely resistive goal; "
+                                    "the lines and stubs use the goal resistance as their impedance.");
+    return s.goalOhms.real();
+}
+
+Component matchLine(const MatchSpecification& s, double z0, double degrees)
+{
+    auto line = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
+    line.lineOhms = z0;
+    line.lengthDegrees = degrees;
+    return line;
+}
+
+// Shunt stub with the given input susceptance (siemens).
+// Open: Y = j*tan(l)/z0. Shorted: Y = -j*cot(l)/z0.
+// The length is folded into [0, 180) degrees because a negative length is a
+// half wavelength longer.
+Component matchStub(const MatchSpecification& s, double z0, double susceptance)
+{
+    const bool open = s.stub == StubTermination::Open;
+    double angle = open ? std::atan(susceptance * z0) : std::atan2(-1.0, susceptance * z0);
+    if (angle < 0) angle += pi;
+    auto stub = matchLine(s, z0, angle * 180 / pi);
+    stub.connection = open ? Connection::OpenStub : Connection::ShortStub;
+    return stub;
+}
+
 // Single-stub match: a series line of length d from the load, then a shunt stub
 // across it. Closed-form solution from D. M. Pozar, Microwave Engineering, 4th ed.,
 // Wiley, 2012, pp. 234-241 (the first of the two solutions, as in the Qucs-S
-// MatchingNetwork SingleStub tool). The line and the stub both use the goal
-// resistance as characteristic impedance, so the junction admittance becomes 1/goal.
+// MatchingNetwork SingleStub tool).
 void addSingleStub(Document& document, const MatchSpecification& s)
 {
-    if (s.goalOhms.imag() != 0)
-        throw std::invalid_argument("Single-stub matching requires a purely resistive goal; "
-                                    "the line and stub use the goal resistance as their impedance.");
-    const double z0 = s.goalOhms.real();
+    const double z0 = stubLineOhms(s);
     const double rl = s.startOhms.real();
     const double xl = s.startOhms.imag();
     // t = tan(beta*d) makes Re(Y) at the stub equal to 1/z0.
@@ -52,22 +85,33 @@ void addSingleStub(Document& document, const MatchSpecification& s)
     // Susceptance of the load seen through the line; the stub must cancel it.
     const double b = (rl * rl * t - (z0 - xl * t) * (z0 * t + xl))
                      / (z0 * (rl * rl + (z0 * t + xl) * (z0 * t + xl)));
-    const bool open = s.stub == StubTermination::Open;
-    // Open: Y = +j*tan(l)/z0 = -jB. Shorted: Y = -j*cot(l)/z0 = -jB.
-    // Both are folded into [0, pi) because a negative length is a half wavelength longer.
     double lineAngle = std::atan(t);
-    double stubAngle = open ? std::atan(-b * z0) : std::atan2(1.0, b * z0);
     if (lineAngle < 0) lineAngle += pi;
-    if (stubAngle < 0) stubAngle += pi;
-    auto line = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
-    line.lineOhms = z0;
-    line.lengthDegrees = lineAngle * 180 / pi;
-    auto stub = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
-    stub.connection = open ? Connection::OpenStub : Connection::ShortStub;
-    stub.lineOhms = z0;
-    stub.lengthDegrees = stubAngle * 180 / pi;
-    document.components.push_back(line);
-    document.components.push_back(stub);
+    document.components.push_back(matchLine(s, z0, lineAngle * 180 / pi));
+    document.components.push_back(matchStub(s, z0, -b));
+}
+
+// Double-stub match: a shunt stub across the load, a lambda/8 line, then a second
+// shunt stub. Closed-form solution from D. M. Pozar, Microwave Engineering,
+// 4th ed., Wiley, 2012, pp. 241-245 (the first of the two solutions, as in the
+// Qucs-S MatchingNetwork DoubleStub tool).
+void addDoubleStub(Document& document, const MatchSpecification& s)
+{
+    const double z0 = stubLineOhms(s);
+    const double y0 = 1 / z0;
+    const double magnitude = std::norm(s.startOhms);
+    const double gl = s.startOhms.real() / magnitude;
+    const double bl = -s.startOhms.imag() / magnitude;
+    // The lambda/8 spacing gives tan(beta*d) = 1. The radicand is negative when
+    // Re(Y_load) exceeds Y0 / sin^2(beta*d) = 2*Y0: the load cannot be matched.
+    const double radicand = 2 * gl * y0 - gl * gl;
+    if (radicand < 0)
+        throw std::invalid_argument("A lambda/8 double stub cannot match this load: its conductance "
+                                    "exceeds twice the goal conductance.");
+    const double root = std::sqrt(radicand);
+    document.components.push_back(matchStub(s, z0, -bl + y0 + root));
+    document.components.push_back(matchLine(s, z0, 45));
+    document.components.push_back(matchStub(s, z0, (y0 * root + gl * y0) / gl));
 }
 
 // Validate the synthesized endpoint, not just individual component ranges:
@@ -89,9 +133,9 @@ Document synthesizeMatch(const MatchSpecification& s)
     // Document order is the order of impedance transformations from start to goal,
     // not the left-to-right source-to-load order used in exported schematics.
     if (s.type != MatchType::LowPass && s.type != MatchType::HighPass
-        && s.type != MatchType::QuarterWave && s.type != MatchType::SingleStub)
+        && s.type != MatchType::QuarterWave && !isStub(s.type))
         throw std::invalid_argument("Unknown matching topology.");
-    if (s.type != MatchType::SingleStub && (s.sections < 1 || s.sections > 10))
+    if (!isStub(s.type) && (s.sections < 1 || s.sections > 10))
         throw std::invalid_argument("MatchMe requires between 1 and 10 sections.");
     Document document;
     document.startOhms = s.startOhms;
@@ -105,8 +149,9 @@ Document synthesizeMatch(const MatchSpecification& s)
                      + (s.type == MatchType::LowPass ? "lumped low-pass"
                         : s.type == MatchType::HighPass ? "lumped high-pass"
                         : s.type == MatchType::QuarterWave ? "quarter-wave transformer"
-                        : s.stub == StubTermination::Open ? "single open stub" : "single shorted stub")
-                     + (s.type == MatchType::SingleStub ? "" : ", " + std::to_string(s.sections) + " section(s)");
+                                                           : std::string(s.type == MatchType::SingleStub ? "single " : "double ")
+                                                                 + (s.stub == StubTermination::Open ? "open" : "shorted") + " stub")
+                     + (isStub(s.type) ? "" : ", " + std::to_string(s.sections) + " section(s)");
     document.qCurves = true;
     if (s.startOhms == s.goalOhms) {
         // The legacy wizard substituted a different load to demonstrate a match.
@@ -114,9 +159,10 @@ Document synthesizeMatch(const MatchSpecification& s)
         finish(document);
         return document;
     }
-    if (s.type == MatchType::SingleStub) {
-        // The line absorbs the start reactance, so no compensating element is added.
-        addSingleStub(document, s);
+    if (isStub(s.type)) {
+        // The stubs absorb the start reactance, so no compensating element is added.
+        if (s.type == MatchType::SingleStub) addSingleStub(document, s);
+        else addDoubleStub(document, s);
         finish(document);
         verifyEndpoint(document);
         return document;

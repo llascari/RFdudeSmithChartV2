@@ -130,7 +130,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
                          {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
-                          "Single stub"});
+                          "Single stub", "Double stub"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
@@ -138,9 +138,10 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     form->addRow("Sections (1-10)", sections);
     auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
     const auto updateEnabled = [type, sections, stub] {
-        const bool single = static_cast<rf::MatchType>(type->currentIndex()) == rf::MatchType::SingleStub;
-        sections->setEnabled(!single);
-        stub->setEnabled(single);
+        const auto topology = static_cast<rf::MatchType>(type->currentIndex());
+        const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
+        sections->setEnabled(!stubs);
+        stub->setEnabled(stubs);
     };
     QObject::connect(type, &QComboBox::currentIndexChanged, type, updateEnabled);
     updateEnabled();
@@ -152,9 +153,10 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* note = new QLabel("Legacy MatchMe: equal-ratio resistance steps, with series reactance "
                             "compensation at the ends. Uses start/goal settings, not the selected row. "
                             "Equal resistances are preserved; no example load is substituted. "
-                            "Single stub: a series line then a shunt stub, both with the goal resistance "
-                            "as impedance (goal reactance must be 0); the start reactance is matched "
-                            "directly and the section count is ignored.");
+                            "Single stub: a series line then a shunt stub. Double stub: a stub across the "
+                            "load, a lambda/8 line, then a second stub. Lines and stubs use the goal "
+                            "resistance as impedance (goal reactance must be 0); the start reactance is "
+                            "matched directly and the section count is ignored.");
     note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
