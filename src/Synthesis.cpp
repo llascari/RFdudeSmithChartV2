@@ -169,9 +169,23 @@ Document synthesizeMatch(const MatchSpecification& s)
     }
     // Reduce the problem to real terminations, then restore the goal reactance.
     // Unlike the legacy 2%-of-R threshold, compensate every nonzero reactance.
-    addSeriesReactance(document, -s.startOhms.imag());
-    const double low = std::min(s.startOhms.real(), s.goalOhms.real());
-    const double high = std::max(s.startOhms.real(), s.goalOhms.real());
+    double startR = s.startOhms.real();
+    if (s.type == MatchType::QuarterWave && s.startReactance == ReactanceMatch::LambdaEighth
+        && s.startOhms.imag() != 0) {
+        // A lambda/8 line with Z = |Zstart| turns Zstart into the real resistance
+        // R*Z/(Z - X). I. J. Bahl, Fundamentals of RF and Microwave Transistor
+        // Amplifiers, Wiley, 2009, pp. 159-160 (as in the Qucs-S Lambda8Lambda4 tool).
+        const double magnitude = std::abs(s.startOhms);
+        auto line = defaultComponent(Kind::Line, s.frequencyMHz, s.referenceOhms);
+        line.lengthDegrees = 45;
+        line.lineOhms = magnitude;
+        document.components.push_back(line);
+        startR = s.startOhms.real() * magnitude / (magnitude - s.startOhms.imag());
+    } else {
+        addSeriesReactance(document, -s.startOhms.imag());
+    }
+    const double low = std::min(startR, s.goalOhms.real());
+    const double high = std::max(startR, s.goalOhms.real());
     std::vector<Component> ladder;
     const double logRatio = std::log(high / low);
     // Equal resistance ratios give every L section the same loaded Q:
@@ -214,7 +228,7 @@ Document synthesizeMatch(const MatchSpecification& s)
         // A reciprocal lossless ladder matches in the other direction when its
         // element order is reversed. Reverse only the real-resistance ladder;
         // the start/goal compensating reactances must stay at their own ends.
-        if (s.startOhms.real() > s.goalOhms.real())
+        if (startR > s.goalOhms.real())
             std::reverse(ladder.begin(), ladder.end());
     }
     document.components.insert(document.components.end(), ladder.begin(), ladder.end());

@@ -6,12 +6,14 @@ namespace rf {
 
 enum class MatchType { LowPass, HighPass, QuarterWave, SingleStub, DoubleStub };
 enum class StubTermination { Open, Shorted };
+enum class ReactanceMatch { Lumped, LambdaEighth };
 
 struct MatchSpecification
 {
     MatchType type = MatchType::LowPass;
     int sections = 1;                                // Ignored by the stub topologies.
     StubTermination stub = StubTermination::Open;    // Used only by the stub topologies.
+    ReactanceMatch startReactance = ReactanceMatch::Lumped;  // Used only by QuarterWave.
     Complex startOhms = {5, 0};
     Complex goalOhms = {50, 0};
     double frequencyMHz = 1000;

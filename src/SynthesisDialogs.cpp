@@ -137,11 +137,14 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     sections->setValue(1);
     form->addRow("Sections (1-10)", sections);
     auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
-    const auto updateEnabled = [type, sections, stub] {
+    auto* reactance = choices(form, "Start reactance matching", "matchReactance",
+                              {"Lumped L/C", "Lambda/8 line"});
+    const auto updateEnabled = [type, sections, stub, reactance] {
         const auto topology = static_cast<rf::MatchType>(type->currentIndex());
         const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
         sections->setEnabled(!stubs);
         stub->setEnabled(stubs);
+        reactance->setEnabled(topology == rf::MatchType::QuarterWave);
     };
     QObject::connect(type, &QComboBox::currentIndexChanged, type, updateEnabled);
     updateEnabled();
@@ -156,7 +159,9 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
                             "Single stub: a series line then a shunt stub. Double stub: a stub across the "
                             "load, a lambda/8 line, then a second stub. Lines and stubs use the goal "
                             "resistance as impedance (goal reactance must be 0); the start reactance is "
-                            "matched directly and the section count is ignored.");
+                            "matched directly and the section count is ignored. Quarter-wave: the start "
+                            "reactance is matched with a lumped element or a lambda/8 line; the goal "
+                            "reactance always uses a lumped element.");
     note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
@@ -164,6 +169,7 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
         s.type = static_cast<rf::MatchType>(type->currentIndex());
         s.sections = sections->value();
         s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
+        s.startReactance = static_cast<rf::ReactanceMatch>(reactance->currentIndex());
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
         s.frequencyMHz = frequency->value();
