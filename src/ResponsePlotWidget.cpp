@@ -39,6 +39,13 @@ ResponsePlotWidget::ResponsePlotWidget(QWidget* parent) : QWidget(parent)
                   "Up/Down or wheel while focused changes frequency."));
 }
 
+void ResponsePlotWidget::setFocusBorderEnabled(bool enabled)
+{
+    if (focusBorderEnabled_ == enabled) return;
+    focusBorderEnabled_ = enabled;
+    update();
+}
+
 void ResponsePlotWidget::setResponse(const rf::Sweep& sweep, std::vector<rf::ResponseSample> samples, bool onePort)
 {
     sweep_ = sweep;
@@ -111,6 +118,18 @@ void ResponsePlotWidget::setMarker(double frequencyMHz)
 void ResponsePlotWidget::clearMarker()
 {
     markerVisible_ = false;
+    update();
+}
+
+void ResponsePlotWidget::focusInEvent(QFocusEvent* event)
+{
+    QWidget::focusInEvent(event);
+    update();
+}
+
+void ResponsePlotWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
     update();
 }
 
@@ -334,6 +353,12 @@ void ResponsePlotWidget::paintEvent(QPaintEvent*)
         painter.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()));
     }
     painter.restore();
+
+    if (focusBorderEnabled_ && hasFocus()) {
+        painter.setPen(QPen(palette().color(QPalette::Highlight), 3));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRect(rect().adjusted(1, 1, -2, -2));
+    }
 }
 
 void ResponsePlotWidget::mousePressEvent(QMouseEvent* event)

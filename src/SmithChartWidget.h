@@ -10,6 +10,7 @@ class SmithChartWidget final : public QWidget
 
 public:
     explicit SmithChartWidget(QWidget* parent = nullptr);
+    void setFocusBorderEnabled(bool enabled);
     void setNetwork(const rf::Document& document, const rf::Evaluation& evaluation);
     const std::vector<rf::Complex>& s11Trajectory() const { return s11Trajectory_; }
     const std::vector<rf::Complex>& s22Trajectory() const { return s22Trajectory_; }
@@ -25,6 +26,8 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent*) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -46,6 +49,7 @@ private:
     double trajectoryStopMHz_ = 2000;
     int trajectoryPoints_ = 401;
     bool trajectoryLogarithmic_ = false;
+    bool focusBorderEnabled_ = true;
     int wheelRemainder_ = 0;
 };
 

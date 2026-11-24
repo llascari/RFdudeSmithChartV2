@@ -42,6 +42,13 @@ SmithChartWidget::SmithChartWidget(QWidget* parent) : QWidget(parent)
                   "Right-click inside the chart to inspect or set an impedance."));
 }
 
+void SmithChartWidget::setFocusBorderEnabled(bool enabled)
+{
+    if (focusBorderEnabled_ == enabled) return;
+    focusBorderEnabled_ = enabled;
+    update();
+}
+
 void SmithChartWidget::setNetwork(const rf::Document& d, const rf::Evaluation& e)
 {
     document_ = d;
@@ -460,6 +467,24 @@ void SmithChartWidget::paintEvent(QPaintEvent*)
     p.setPen(QPen(QColor("#9d409a"), 2));
     p.drawLine(goal + QPointF(-5, -5), goal + QPointF(5, 5));
     p.drawLine(goal + QPointF(-5, 5), goal + QPointF(5, -5));
+
+    if (focusBorderEnabled_ && hasFocus()) {
+        p.setPen(QPen(palette().color(QPalette::Highlight), 3));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(rect().adjusted(1, 1, -2, -2));
+    }
+}
+
+void SmithChartWidget::focusInEvent(QFocusEvent* event)
+{
+    QWidget::focusInEvent(event);
+    update();
+}
+
+void SmithChartWidget::focusOutEvent(QFocusEvent* event)
+{
+    QWidget::focusOutEvent(event);
+    update();
 }
 
 void SmithChartWidget::mousePressEvent(QMouseEvent* event)

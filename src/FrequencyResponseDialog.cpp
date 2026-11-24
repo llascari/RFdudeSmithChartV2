@@ -515,7 +515,9 @@ QImage FrequencyResponseDialog::responseImage()
     const auto savedMinimum = plot_->minimumSize();
     const auto savedMaximum = plot_->maximumSize();
     plot_->setFixedSize(plotSize);
+    plot_->setFocusBorderEnabled(false);
     const auto plot = plot_->grab();
+    plot_->setFocusBorderEnabled(true);
     plot_->setMinimumSize(savedMinimum);
     plot_->setMaximumSize(savedMaximum);
     layout()->activate();  // put the on-screen plot back before returning to the event loop

@@ -9,6 +9,7 @@ class ResponsePlotWidget final : public QWidget
 
 public:
     explicit ResponsePlotWidget(QWidget* parent = nullptr);
+    void setFocusBorderEnabled(bool enabled);
     void setResponse(const rf::Sweep& sweep, std::vector<rf::ResponseSample> samples, bool onePort = false);
     void setStabilityTraces(bool gmax, bool k, bool b1);
     void setMagnitudeScale(bool automatic, double ceilingDb, double floorDb);
@@ -24,6 +25,8 @@ signals:
 protected:
     void paintEvent(QPaintEvent*) override;
     bool event(QEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -46,5 +49,6 @@ private:
     bool showGmax_ = false;
     bool showK_ = false;
     bool showB1_ = false;
+    bool focusBorderEnabled_ = true;
     int wheelRemainder_ = 0;
 };

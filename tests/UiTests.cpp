@@ -1536,6 +1536,7 @@ private slots:
         QTest::keyClick(chart, Qt::Key_C);
         present(window);
         QCOMPARE(window.document().components.size(), std::size_t(2));
+        QVERIFY(chart->hasFocus());
 
         table->selectRow(0);
         QTest::keyClick(table, Qt::Key_C, Qt::ControlModifier);

@@ -832,27 +832,36 @@ bool MainWindow::importTouchstone(const QString& path)
 void MainWindow::addComponent(rf::Kind kind)
 {
     const auto value = editComponent(this, rf::defaultComponent(kind, document_.frequencyMHz, document_.referenceOhms));
-    if (value) change([&](rf::Document& d) {
-        d.components.insert(d.components.begin() + d.selected + 1, *value);
-        ++d.selected;
-    });
+    if (value) {
+        change([&](rf::Document& d) {
+            d.components.insert(d.components.begin() + d.selected + 1, *value);
+            ++d.selected;
+        });
+        chart_->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void MainWindow::addComponent(rf::Kind kind, rf::Connection connection){
     auto component = rf::defaultComponent(kind, document_.frequencyMHz, document_.referenceOhms);
     component.connection = connection;  // the editor opens with this connection selected
     const auto value = editComponent(this, component);
-    if (value) change([&](rf::Document& d) {
+    if (value) {
+        change([&](rf::Document& d) {
             d.components.insert(d.components.begin() + d.selected + 1, *value);
             ++d.selected;
         });
+        chart_->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void MainWindow::editSelected()
 {
     if (document_.selected < 0) return;
     const auto value = editComponent(this, document_.components[static_cast<std::size_t>(document_.selected)]);
-    if (value) change([&](rf::Document& d) { d.components[static_cast<std::size_t>(d.selected)] = *value; });
+    if (value) {
+        change([&](rf::Document& d) { d.components[static_cast<std::size_t>(d.selected)] = *value; });
+        chart_->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void MainWindow::deleteSelected()
@@ -932,8 +941,10 @@ void MainWindow::pasteComponent()
         d.components.insert(d.components.begin() + index, *component);
         d.selected = index;
     });
-    if (changed)
+    if (changed) {
         statusBar()->showMessage(tr("Pasted component to the right of the selection."));
+        chart_->setFocus(Qt::OtherFocusReason);
+    }
 }
 
 void MainWindow::insertComponentRight()
@@ -960,6 +971,7 @@ void MainWindow::insertComponentRight()
         });
         if (changed)
             statusBar()->showMessage(tr("Inserted component to the right of the selection."));
+        chart_->setFocus(Qt::OtherFocusReason);
     }
 }
 
@@ -1165,7 +1177,9 @@ QImage MainWindow::chartImage()
 {
     ensureFrequencyResponse();
     auto response = response_->responseImage();
+    chart_->setFocusBorderEnabled(false);
     const auto chart = chart_->grab();
+    chart_->setFocusBorderEnabled(true);
     const int margin = 20;
     const int width = std::max(1000, chart_->width() + 2 * margin);
     if (response.width() != width - 2 * margin)
