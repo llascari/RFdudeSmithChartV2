@@ -43,11 +43,11 @@ QComboBox* choices(QFormLayout* form, const QString& label, const QString& name,
 }
 
 std::optional<rf::Document> runWizard(QDialog& dialog, QVBoxLayout* layout,
-                                     const rf::Document& original,
-                                     const std::function<rf::Document()>& generate)
+                                      const rf::Document& original,
+                                      const std::function<rf::Document()>& generate)
 {
     auto* warning = new QLabel("Applying replaces the current network and its start/goal impedances. "
-                              "Cancel leaves it unchanged. Replacement can be undone.");
+                               "Cancel leaves it unchanged. Replacement can be undone.");
     warning->setWordWrap(true);
     layout->addWidget(warning);
     auto* preview = new QPlainTextEdit;
@@ -79,15 +79,15 @@ std::optional<rf::Document> runWizard(QDialog& dialog, QVBoxLayout* layout,
             next.qCurves = original.qCurves || generated.qCurves;
             const auto evaluation = rf::evaluate(next);
             QString text = QString::fromStdString(next.title)
-                + QString("\nFrequency: %1 MHz; Z0: %2 ohm\nStart: %3\nGoal: %4\n\n")
-                    .arg(next.frequencyMHz, 0, 'g', 9).arg(next.referenceOhms, 0, 'g', 9)
-                    .arg(impedanceText(rf::Impedance::fromOhms(next.startOhms)),
-                         impedanceText(rf::Impedance::fromOhms(next.goalOhms)));
+                           + QString("\nFrequency: %1 MHz; Z0: %2 ohm\nStart: %3\nGoal: %4\n\n")
+                                 .arg(next.frequencyMHz, 0, 'g', 9).arg(next.referenceOhms, 0, 'g', 9)
+                                 .arg(impedanceText(rf::Impedance::fromOhms(next.startOhms)),
+                                      impedanceText(rf::Impedance::fromOhms(next.goalOhms)));
             if (next.components.empty()) text += "No matching elements required.\n";
             for (std::size_t i = 0; i < next.components.size(); ++i) {
                 const auto& c = next.components[i];
                 text += QString("%1. %2: %3\n").arg(i + 1)
-                    .arg(QString::fromStdString(rf::connectionName(c.connection)), componentDescription(c));
+                            .arg(QString::fromStdString(rf::connectionName(c.connection)), componentDescription(c));
             }
             text += "\nEndpoint: " + impedanceText(evaluation.nodes.back());
             preview->setPlainText(text);
@@ -129,26 +129,103 @@ std::optional<rf::Document> matchWizard(QWidget* parent, const rf::Document& doc
     auto* form = new QFormLayout;
     layout->addLayout(form);
     auto* type = choices(form, "Topology", "matchType",
-        {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer"});
+                         {"Lumped low-pass", "Lumped high-pass", "Quarter-wave transformer",
+                          "Single stub", "Double stub", "Pi network", "Tee network",
+                          "Tapped resonator", "Double-tapped resonator"});
     auto* sections = new QSpinBox;
     sections->setObjectName("matchSections");
     sections->setRange(1, 10);
     sections->setValue(1);
     form->addRow("Sections (1-10)", sections);
+    auto* stub = choices(form, "Stub termination", "matchStub", {"Open", "Shorted"});
+    auto* reactance = choices(form, "Start reactance matching", "matchReactance",
+                              {"Lumped L/C", "Lambda/8 line"});
+    auto* weighting = choices(form, "Section weighting", "matchWeighting",
+                              {"Equal ratio", "Binomial (maximally flat)", "Chebyshev (equiripple)"});
+    auto* ripple = field(form, "Max reflection coefficient", "matchRipple", 0.05, 0.001, 1);
+    ripple->setDecimals(3);
+    auto* halfBands = choices(form, "Network type (goal side first)", "matchHalves",
+                              {"LP-LP", "LP-HP", "HP-LP", "HP-HP"});
+    auto* tap = choices(form, "Tapped element", "matchTap",
+                        {"Capacitor (tapped-C)", "Inductor (tapped-L)"});
+    auto* loadedQ = field(form, "Loaded Q", "matchQ", 5, 0.1, 100);
+    loadedQ->setDecimals(2);
+    auto* tapInductance = field(form, "Tap inductor (nH)", "matchTapInductance", 10, 0, 1e6);
+    tapInductance->setDecimals(2);
+    auto* note = new QLabel;
+    note->setWordWrap(true);
+    const auto updateControls = [form, type, sections, stub, reactance, weighting, ripple, halfBands, tap, loadedQ, tapInductance, note] {
+        // Indexed like rf::MatchType.
+        static const QStringList details = {
+                                             "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
+                                             "Legacy MatchMe: equal-ratio resistance steps, with series reactance compensation at the ends.",
+                                             "Equal-ratio resistance steps with quarter-wave lines. The start reactance is matched with a "
+                                             "lumped element or a lambda/8 line; the goal reactance always uses a lumped element. "
+                                             "With several sections the impedance steps can be equal-ratio, binomial (maximally flat) or "
+                                             "Chebyshev (equiripple; even-order designs reach the maximum reflection at the design frequency).",
+                                             "A series line then a shunt stub, using the goal resistance as impedance (goal reactance must "
+                                             "be 0). The start reactance is matched directly.",
+                                             "A stub across the load, a lambda/8 line, then a second stub, using the goal resistance as "
+                                             "impedance (goal reactance must be 0). The start reactance is matched directly.",
+                                             "Shunt, series, shunt network through a virtual resistance below both terminations; Q must "
+                                             "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
+                                             "uses a lumped series element.",
+                                             "Series, shunt, series network through a virtual resistance above both terminations; Q must "
+                                             "exceed sqrt(Rmax/Rmin - 1). The start reactance is matched directly; the goal reactance "
+                                             "uses a lumped series element.",
+                                             "Shunt, series, shunt network with a tapped capacitor (tapped-C) or inductor (tapped-L); Q "
+                                             "is that of the shunt element on the higher resistance and must exceed sqrt(Rmax/Rmin - 1). "
+                                             "The start and goal reactances use lumped series elements.",
+                                             "Shunt L, series tap inductor and capacitor, shunt C. Q is that of the shunt L across the goal "
+                                             "resistance; the tap inductor must be large enough for a positive series capacitor. The start "
+                                             "and goal reactances use lumped series elements."};
+        const auto topology = static_cast<rf::MatchType>(type->currentIndex());
+        const bool stubs = topology == rf::MatchType::SingleStub || topology == rf::MatchType::DoubleStub;
+        const auto setRowVisible = [form](QWidget* field, bool visible) {
+            field->setVisible(visible);
+            form->labelForField(field)->setVisible(visible);
+        };
+        setRowVisible(sections, topology == rf::MatchType::LowPass || topology == rf::MatchType::HighPass
+                                    || topology == rf::MatchType::QuarterWave);
+        setRowVisible(stub, stubs);
+        setRowVisible(reactance, topology == rf::MatchType::QuarterWave);
+        const bool weightable = topology == rf::MatchType::QuarterWave && sections->value() > 1;
+        setRowVisible(weighting, weightable);
+        setRowVisible(ripple, weightable
+                                  && weighting->currentIndex() == static_cast<int>(rf::SectionWeighting::Chebyshev));
+        const bool halves = topology == rf::MatchType::Pi || topology == rf::MatchType::Tee;
+        const bool tapped = topology == rf::MatchType::Tapped;
+        setRowVisible(halfBands, halves);
+        setRowVisible(tap, tapped);
+        const bool doubleTapped = topology == rf::MatchType::DoubleTapped;
+        setRowVisible(loadedQ, halves || tapped || doubleTapped);
+        setRowVisible(tapInductance, doubleTapped);
+        note->setText(details.value(type->currentIndex())
+                      + " Uses start/goal settings, not the selected row. Equal resistances are "
+                        "preserved; no example load is substituted.");
+    };
+    QObject::connect(type, &QComboBox::currentIndexChanged, type, updateControls);
+    QObject::connect(sections, &QSpinBox::valueChanged, sections, updateControls);
+    QObject::connect(weighting, &QComboBox::currentIndexChanged, weighting, updateControls);
+    updateControls();
     auto* startR = field(form, "Starting resistance (ohm)", "matchStartR", document.startOhms.real(), 0);
     auto* startX = field(form, "Starting reactance (ohm)", "matchStartX", document.startOhms.imag(), -1e12);
     auto* goalR = field(form, "Goal resistance (ohm)", "matchGoalR", document.goalOhms.real());
     auto* goalX = field(form, "Goal reactance (ohm)", "matchGoalX", document.goalOhms.imag(), -1e12);
     auto* frequency = addFrequencyRow(form, "Design frequency", "matchFrequency", document.frequencyMHz);
-    auto* note = new QLabel("Legacy MatchMe: equal-ratio resistance steps, with series reactance "
-                           "compensation at the ends. Uses start/goal settings, not the selected row. "
-                           "Equal resistances are preserved; no example load is substituted.");
-    note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
         rf::MatchSpecification s;
         s.type = static_cast<rf::MatchType>(type->currentIndex());
         s.sections = sections->value();
+        s.stub = static_cast<rf::StubTermination>(stub->currentIndex());
+        s.startReactance = static_cast<rf::ReactanceMatch>(reactance->currentIndex());
+        s.halves = static_cast<rf::HalfBands>(halfBands->currentIndex());
+        s.tap = static_cast<rf::TapElement>(tap->currentIndex());
+        s.weighting = static_cast<rf::SectionWeighting>(weighting->currentIndex());
+        s.maxReflection = ripple->value();
+        s.tapInductanceNh = tapInductance->value();
+        s.q = loadedQ->value();
         s.startOhms = {startR->value(), startX->value()};
         s.goalOhms = {goalR->value(), goalX->value()};
         s.frequencyMHz = frequency->value();
@@ -178,8 +255,8 @@ std::optional<rf::Document> filterWizard(QWidget* parent, const rf::Document& do
     auto* impedance = field(form, "Termination / chart impedance (ohm)", "filterImpedance",
                             document.referenceOhms);
     auto* note = new QLabel("Legacy simple filter synthesis: odd-order Chebyshev LC ladder, "
-                           "equal real start/goal terminations. The preview shows the effective "
-                           "odd order. Analysis frequency is set to the ripple cutoff.");
+                            "equal real start/goal terminations. The preview shows the effective "
+                            "odd order. Analysis frequency is set to the ripple cutoff.");
     note->setWordWrap(true);
     layout->addWidget(note);
     return runWizard(dialog, layout, document, [&] {
