@@ -19,6 +19,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFrame>
 #include <QImage>
 #include <QIcon>
 #include <QGroupBox>
@@ -326,6 +327,11 @@ private slots:
         auto* plot = dialog->findChild<ResponsePlotWidget*>();
         auto* marker = dialog->findChild<QLabel*>("responseMarker");
         QVERIFY(plot && marker);
+        auto* markerFrequency = dialog->findChild<QDoubleSpinBox*>("responseMarkerFrequency");
+        QVERIFY(markerFrequency);
+        QVERIFY(dialog->findChild<QFrame*>("responseMarkerPanel"));
+        QCOMPARE(plot->minimumWidth(), 560);
+        QCOMPARE(plot->minimumHeight(), 340);
         auto* mode = dialog->findChild<QComboBox*>("responseMode");
         QCOMPARE(mode->currentIndex(), 1);  // default view is terminated S11
         mode->setCurrentIndex(0);           // the checks below use the two-port view

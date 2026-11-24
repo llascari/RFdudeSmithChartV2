@@ -15,6 +15,7 @@ public:
     void setMagnitudeScale(bool automatic, double ceilingDb, double floorDb);
     void setMarker(double frequencyMHz);
     void clearMarker();
+    void setMarkerOverlay(QWidget* overlay);
     const std::vector<rf::ResponseSample>& samples() const { return samples_; }
     QPointF pointForSample(double frequencyMHz, double decibels) const;
 
@@ -30,6 +31,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     QRectF plotRect() const;
@@ -51,4 +53,5 @@ private:
     bool showB1_ = false;
     bool focusBorderEnabled_ = true;
     int wheelRemainder_ = 0;
+    QWidget* markerOverlay_ = nullptr;
 };

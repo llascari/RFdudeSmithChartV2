@@ -62,6 +62,7 @@ private:
     QComboBox* magnitudeFloor_;
     QLabel* status_;
     QLabel* marker_;
+    FrequencySpinBox* markerFrequency_;
     ResponsePlotWidget* plot_;
     bool terminated_ = false;
     bool singlePoint_ = false;

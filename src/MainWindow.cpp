@@ -644,7 +644,7 @@ void MainWindow::ensureFrequencyResponse()
         responseDock_->setAllowedAreas(Qt::AllDockWidgetAreas);
         responseDock_->setWidget(response_);
         addDockWidget(Qt::RightDockWidgetArea, responseDock_);
-        resizeDocks({responseDock_}, {620}, Qt::Horizontal);
+        resizeDocks({responseDock_}, {820}, Qt::Horizontal);
         responseDock_->hide();
         connect(response_, &QDialog::rejected, responseDock_, &QWidget::hide);
         if (twoPortResponse_) {
@@ -701,7 +701,7 @@ void MainWindow::showResponsePanel()
 {
     const bool first = !response_;
     showFrequencyResponse();
-    if (first && !isMaximized() && !isFullScreen()) resize(width() + 620, height());
+    if (first && !isMaximized() && !isFullScreen()) resize(width() + 820, height());
 }
 
 bool MainWindow::change(const std::function<void(rf::Document&)>& mutation)

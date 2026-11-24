@@ -10,6 +10,8 @@
 #include <QFileDialog>
 #include <QGridLayout>
 #include <QCheckBox>
+#include <QFrame>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPainter>
@@ -54,11 +56,12 @@ FrequencyResponseDialog::FrequencyResponseDialog(const rf::Document& document, Q
 {
     setObjectName("frequencyResponse");
     setWindowTitle(tr("Frequency response - S parameters"));
-    resize(620, 720);
-    setMinimumWidth(420);
+    resize(820, 820);
+    setMinimumWidth(620);
+    setMinimumHeight(760);
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(16, 16, 16, 16);
-    layout->setSpacing(10);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(6);
     auto* explanation = new QLabel(tr(
         "Port 1 = source / input; port 2 = load end. Both ports use the reference below.\n"
         "Start/goal impedances and the schematic source resistor are external, not included. "
@@ -174,19 +177,34 @@ FrequencyResponseDialog::FrequencyResponseDialog(const rf::Document& document, Q
     status_->setWordWrap(true);
     status_->setTextFormat(Qt::PlainText);
     layout->addWidget(status_);
-    plot_ = new ResponsePlotWidget;
-    layout->addWidget(plot_, 1);
-    marker_ = new QLabel;
-    marker_->setObjectName("responseMarker");
-    marker_->setTextFormat(Qt::PlainText);
-    marker_->setWordWrap(true);
-    marker_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    layout->addWidget(marker_);
     auto* hint = new QLabel(tr("Click a frequency in the plot to update the Smith chart (undoable). "
         "Marker values are calculated at the exact analysis frequency. Measured data uses complex linear interpolation. "
         "S22 is dashed; coincident traces may overlap. The amplitude floor is configurable."));
     hint->setWordWrap(true);
     layout->addWidget(hint);
+    plot_ = new ResponsePlotWidget;
+    layout->addWidget(plot_, 1);
+    auto* markerPanel = new QFrame;
+    markerPanel->setObjectName("responseMarkerPanel");
+    markerPanel->setFrameShape(QFrame::StyledPanel);
+    markerPanel->setFrameShadow(QFrame::Plain);
+    auto* markerLayout = new QHBoxLayout(markerPanel);
+    markerLayout->setContentsMargins(8, 6, 8, 6);
+    markerLayout->setSpacing(10);
+    markerLayout->addWidget(new QLabel(tr("Analysis frequency")));
+    markerFrequency_ = frequencyField("responseMarkerFrequency", document_.frequencyMHz);
+    markerLayout->addWidget(frequencyEditor(markerFrequency_));
+    marker_ = new QLabel;
+    marker_->setObjectName("responseMarker");
+    marker_->setTextFormat(Qt::PlainText);
+    marker_->setWordWrap(true);
+    marker_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    markerLayout->addWidget(marker_, 1);
+    connect(markerFrequency_, &QDoubleSpinBox::valueChanged, this,
+            [this](double frequency) {
+                emit frequencySelected(rf::nearestMeasuredFrequency(document_, frequency));
+            });
+    plot_->setMarkerOverlay(markerPanel);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
     auto* exportButton = buttons->addButton(tr("Export plot PNG..."), QDialogButtonBox::ActionRole);
     exportButton->setObjectName("exportResponse");
@@ -422,6 +440,8 @@ void FrequencyResponseDialog::updateMarker()
         const auto s = terminated_
             ? rf::SParameters{rf::inputReflection(document_, document_.frequencyMHz, sweep_.portOhms), 0, 0, 0}
             : rf::sParameters(document_.components, document_.frequencyMHz, sweep_.portOhms);
+        const QSignalBlocker markerBlock(markerFrequency_);
+        markerFrequency_->setValue(document_.frequencyMHz);
         plot_->setMarker(document_.frequencyMHz);
         marker_->setText(tr("Analysis marker: %1 MHz%2\nS11: %3 dB     S21: %4 dB     S22: %5 dB")
             .arg(document_.frequencyMHz, 0, 'g', 9)

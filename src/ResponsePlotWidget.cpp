@@ -32,7 +32,7 @@ ResponsePlotWidget::ResponsePlotWidget(QWidget* parent) : QWidget(parent)
 {
     setObjectName("responsePlot");
     setAccessibleName(tr("S parameter magnitude and stability versus frequency"));
-    setMinimumSize(520, 300);
+    setMinimumSize(560, 340);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setFocusPolicy(Qt::StrongFocus);
     setToolTip(tr("Click the plot to set the analysis frequency. "
@@ -121,6 +121,25 @@ void ResponsePlotWidget::clearMarker()
     update();
 }
 
+void ResponsePlotWidget::setMarkerOverlay(QWidget* overlay)
+{
+    markerOverlay_ = overlay;
+    if (markerOverlay_) {
+        markerOverlay_->setParent(this);
+        markerOverlay_->raise();
+    }
+    update();
+}
+
+void ResponsePlotWidget::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    if (markerOverlay_) {
+        const int overlayHeight = 68;
+        markerOverlay_->setGeometry(0, height() - overlayHeight, width(), overlayHeight);
+    }
+}
+
 void ResponsePlotWidget::focusInEvent(QFocusEvent* event)
 {
     QWidget::focusInEvent(event);
@@ -148,7 +167,13 @@ bool ResponsePlotWidget::event(QEvent* event)
 
 QRectF ResponsePlotWidget::plotRect() const
 {
-    return QRectF(64, 52, width() - 88, height() - 112);
+    const int leftMargin = 52;
+    const int rightMargin = (!onePort_ && (showK_ || showB1_)) ? 72 : 24;
+    const int topMargin = 52;
+    const int bottomMargin = markerOverlay_ ? 94 : 34;
+    return QRectF(leftMargin, 52,
+                  std::max(1, width() - leftMargin - rightMargin),
+                  std::max(1, height() - topMargin - bottomMargin));
 }
 
 double ResponsePlotWidget::fraction(double frequencyMHz) const
@@ -183,6 +208,12 @@ void ResponsePlotWidget::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.fillRect(rect(), Qt::white);
+    const bool compact = width() < 600 || height() < 360;
+    if (compact) {
+        auto font = painter.font();
+        font.setPointSize(std::max(7, font.pointSize() - 1));
+        painter.setFont(font);
+    }
     const auto area = plotRect();
     const std::array<QColor, 3> colors{QColor(190, 45, 40), QColor(30, 95, 200), QColor(15, 120, 65)};
     const std::array<QString, 3> names{"S11", "S21", "S22"};
@@ -250,24 +281,15 @@ void ResponsePlotWidget::paintEvent(QPaintEvent*)
             ? std::exp(std::lerp(std::log(sweep_.startMHz), std::log(sweep_.stopMHz), i / 5.0))
             : std::lerp(sweep_.startMHz, sweep_.stopMHz, i / 5.0);
         painter.setPen(Qt::black);
-        painter.drawText(QRectF(x - 45, area.bottom() + 6, 90, 22), Qt::AlignCenter,
+        painter.drawText(QRectF(x - 45, area.bottom() + 6, 90, 18), Qt::AlignHCenter | Qt::AlignTop,
                          QString::number(f, 'g', 5));
-    }
-    painter.drawRect(area);
-    painter.drawText(QRectF(area.left(), height() - 52, area.width(), 22), Qt::AlignCenter,
-                     sweep_.logarithmic ? tr("Frequency (MHz, logarithmic)") : tr("Frequency (MHz, linear)"));
-    painter.drawText(QRectF(2, height() - 28, 210, 22), Qt::AlignLeft,
-                     tr("Magnitude (dB), floor %1").arg(floorDb_, 0, 'g', 5));
-    if (!onePort_ && (showK_ || showB1_)) {
-        painter.drawText(QRectF(area.right() - 210, height() - 28, 210, 22), Qt::AlignRight,
-                         tr("Right axis: stability"));
     }
     if (samples_.empty()) {
         painter.drawText(area, Qt::AlignCenter, tr("No response - apply a valid sweep."));
         return;
     }
     painter.save();
-    painter.setClipRect(area.adjusted(-1, -1, 1, 1));
+    painter.setClipRect(area.adjusted(1, 1, -1, -1));
     for (int trace = 0; trace < (onePort_ ? 1 : 3); ++trace) {
         QPainterPath path;
         bool first = true;
@@ -353,6 +375,10 @@ void ResponsePlotWidget::paintEvent(QPaintEvent*)
         painter.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()));
     }
     painter.restore();
+
+    painter.setPen(Qt::black);
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRect(area);
 
     if (focusBorderEnabled_ && hasFocus()) {
         painter.setPen(QPen(palette().color(QPalette::Highlight), 3));
