@@ -1354,11 +1354,13 @@ private slots:
                 QVERIFY(dialog->findChild<QCheckBox*>("stabilityGmax")->isChecked());
                 QVERIFY(dialog->findChild<QCheckBox*>("stabilityGmax")->isEnabled());
                 auto* plot = dialog->findChild<ResponsePlotWidget*>();
+                const auto startX = plot->pointForSample(plot->samples().front().frequencyMHz, 0).toPoint().x();
+                const auto stopX = plot->pointForSample(plot->samples().back().frequencyMHz, 0).toPoint().x();
                 QTest::mouseClick(plot, Qt::LeftButton, Qt::NoModifier,
-                                  QPoint(64, plot->height() / 2));
+                                  QPoint(startX, plot->height() / 2));
                 QCOMPARE(window.document().frequencyMHz, 44.5);
                 QTest::mouseClick(plot, Qt::LeftButton, Qt::NoModifier,
-                                  QPoint(plot->width() - 24, plot->height() / 2));
+                                  QPoint(stopX, plot->height() / 2));
                 QCOMPARE(window.document().frequencyMHz, 45.5);
                 QTest::keyClick(plot, Qt::Key_Right);
                 QCOMPARE(window.document().frequencyMHz, 45.5);
